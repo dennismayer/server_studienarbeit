@@ -557,6 +557,73 @@ function slotsForDate(key){
   return [...direct, ...repeating];
 }
 
+// ── cache slot data ──
+async function chacheData() {
+  const {year,month} = state;
+
+  const firstDay = new Date(year, month, 1);
+  // Monday-based: getDay() 0=Sun→6, 1=Mon→0 …
+  let startDow = (firstDay.getDay()+6)%7; // 0=Mon
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const daysInPrev  = new Date(year, month, 0).getDate();
+  const total = startDow + daysInMonth;
+  const trailing = (7 - (total%7)) % 7;
+
+  // delete old slots to make room for new ones
+  state.slots = {};
+
+  // start of fetch request
+  const startInPrev = daysInPrev - startDow + 1;
+  // get this month's slots from backend and cache in state
+  if(startDow > 0) {
+    var prevKey = dateKey(month===0?year-1:year, month===0?11:month-1, startInPrev);
+  } else {
+    var prevKey = dateKey(year, month, 1);
+  } 
+
+  if(trailing > 0) {
+    var postKey = dateKey(month===11?year+1:year, month===11?0:month+1, trailing);
+  } else {
+    var postKey = dateKey(year, month, daysInMonth);
+  }
+
+  const params = new URLSearchParams();
+  params.append("startDate", prevKey);
+  params.append("endDate", postKey);
+
+  try {
+    const response = await fetch(`/api/slot_data?${params}`);
+    const data = await response.json();
+
+    if(response.status === 404) {
+      alert('Keine Slot-Daten gefunden für diesen Zeitraum.');
+      return;
+    }
+
+    if(!response.ok) {
+      console.log(response);
+      return;
+    }
+    data.forEach(slot => {
+      const key = slot.date;
+      if(!state.slots[key]) state.slots[key] = [];
+      state.slots[key].push({
+        id: slot.id, 
+        from: slot.from, 
+        to: slot.to, 
+        title: slot.title, 
+        room: slot.room, 
+        repeat: slot.repeat, 
+        repeatUntil: slot.repeatUntil
+      });
+    });
+
+  } catch (e) {
+    alert(e)
+  }
+}
+
+
 // ── Render Calendar ──
 function renderCalendar(){
   const {year,month} = state;
@@ -666,7 +733,7 @@ function renderSlotList(key){
       ${!s._virtual?`<button class="delete-slot" title="Löschen" data-key="${s._srcKey||key}" data-id="${s.id}">✕</button>`:''}
     `;
     const del = row.querySelector('.delete-slot');
-    if(del) del.addEventListener('click', e=>{
+    if(del) del.addEventListener('click', async (e)=>{
       e.stopPropagation();
       deleteSlot(del.dataset.key, del.dataset.id);
     });
@@ -674,10 +741,33 @@ function renderSlotList(key){
   });
 }
 
-function deleteSlot(key, id){
+async function deleteSlot(key, id){
   if(!state.slots[key]) return;
-  state.slots[key] = state.slots[key].filter(s=>s.id!==id);
-  if(!state.slots[key].length) delete state.slots[key];
+  
+  try {
+    const res = await fetch('/api/slot_data', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({id: id})
+      }
+    )
+
+    if(!res.ok) {
+      console.log(res)
+      alert('Fehler beim Löschen')
+      return 
+    }
+
+    state.slots[key] = state.slots[key].filter(s=>s.id!==id);
+    if(!state.slots[key].length) delete state.slots[key];
+
+  } catch (e) {
+    console.log(e)
+    alert('Fehler beim Löschen')
+  }
+
   const {y,m,d} = state.activeDate;
   renderSlotList(dateKey(y,m,d));
   renderCalendar();
@@ -696,7 +786,7 @@ function closeModal(){
 }
 
 // ── Add slot ──
-document.getElementById('addSlotBtn').addEventListener('click', ()=>{
+document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
   const {y,m,d} = state.activeDate;
   const key = dateKey(y,m,d);
   const from = document.getElementById('timeFrom').value;
@@ -709,11 +799,43 @@ document.getElementById('addSlotBtn').addEventListener('click', ()=>{
   if(!from||!to){ alert('Bitte Anfangs- und Endzeit angeben.'); return; }
   if(from>=to){ alert('Die Endzeit muss nach der Startzeit liegen.'); return; }
 
-  if(!state.slots[key]) state.slots[key]=[];
-  state.slots[key].push({
-    id: Date.now().toString(36)+Math.random().toString(36).slice(2),
-    from, to, title, room, repeat, repeatUntil
-  });
+  try {
+    const response = await fetch('/api/slot_data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(
+        {
+          date: key,
+          from: from,
+          to: to,
+          title: title,
+          room: room,
+          repeat: repeat,
+          repeatUntil: repeatUntil
+        }
+      )
+    })
+
+    const data = await response.json()
+
+    if(!response.ok) {
+      alert('Hinzufügen fehlgeschlagen!')
+      console.log(response, data)
+      return
+    }
+
+    if(!state.slots[key]) state.slots[key]=[];
+    state.slots[key].push({
+      id: data.id,
+      from, to, title, room, repeat, repeatUntil
+    });
+
+  } catch (error) {
+    alert('Hinzufügen fehlgeschlagen!')
+    console.log(error)
+  }
 
   renderSlotList(key);
   renderCalendar();
@@ -738,14 +860,16 @@ document.getElementById('repeatToggle').addEventListener('click', ()=>{
 });
 
 // ── Nav ──
-document.getElementById('prevMonth').addEventListener('click', ()=>{
+document.getElementById('prevMonth').addEventListener('click', async ()=>{
   state.month--;
   if(state.month<0){ state.month=11; state.year--; }
+  await chacheData();
   renderCalendar();
 });
-document.getElementById('nextMonth').addEventListener('click', ()=>{
+document.getElementById('nextMonth').addEventListener('click', async()=>{
   state.month++;
   if(state.month>11){ state.month=0; state.year++; }
+  await chacheData();
   renderCalendar();
 });
 
@@ -755,7 +879,9 @@ document.getElementById('overlay').addEventListener('click', e=>{
 });
 
 // ── Init ──
-renderCalendar();
+chacheData().then(()=>{
+  renderCalendar();
+});
 </script>
 </body>
 </html>

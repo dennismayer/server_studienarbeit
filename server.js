@@ -45,6 +45,7 @@ initializePassport(
 
 app.set('view-engine', 'ejs')
 app.use(express.urlencoded({ extended: false }))
+app.use(express.json())
 app.use(flash())
 app.use(session({
     secret: process.env.SESSION_SECRET,
@@ -95,6 +96,60 @@ app.delete('/logout', (req, res, next) => {
         res.redirect('/login')
     })
 })
+
+// get Data calls
+app.get('/api/slot_data', async (req, res) => {
+    try {
+        const result = await client.query(
+            'SELECT date, id, "from", "to", title, room, repeat, "repeatUntil" FROM time_slots WHERE date >= $1 AND date <= $2 AND user_id = $3',
+            [req.query.startDate, req.query.endDate, req.user.user_id]
+        )
+
+        for (let row of result.rows) {
+            row.date = row.date.toISOString().slice(0, 10)
+            row.from = row.from.toString().slice(0, 5)
+            row.to = row.to.toString().slice(0, 5)
+        }
+
+        if(result.rows.length > 0) {
+            res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(result.rows))
+        } else {
+            res.sendStatus(404)
+        }
+    } catch(e) {
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+    }
+})
+
+app.post('/api/slot_data', async (req, res) => {
+    try {
+        const query = await client.query(
+            'INSERT INTO time_slots (date, user_id, "from", "to", title, room, repeat, "repeatUntil") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+            [req.body.date, req.user.user_id, req.body.from + ':00', req.body.to + ':00', req.body.title, req.body.room, req.body.repeat, req.body.repeatUntil]
+        )
+
+        res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(query.rows[0]))
+    } catch (e) {
+        console.log(e)
+        res.status(400).send()
+    }
+    
+})
+
+app.delete('/api/slot_data', async (req, res) => {
+    try {
+        await client.query(
+            'DELETE FROM time_slots WHERE id = $1',
+            [req.body.id]
+        )
+
+        res.sendStatus(200)
+    } catch (e) {
+        console.log(e)
+        res.sendStatus(400)
+    }
+})
+
 
 function checkAuthenticated(req, res, next) {
     if(req.isAuthenticated()) {
