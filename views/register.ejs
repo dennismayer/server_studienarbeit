@@ -1,52 +1,172 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
+    <title>Registrieren – Professorenportal</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg: #f5f2ee;
+        --surface: #ffffff;
+        --accent: #2b5cad;
+        --accent2: #d4691e;
+        --text: #1a1a2e;
+        --muted: #7a7a8c;
+        --border: #e0dbd4;
+        --shadow: 0 20px 60px rgba(43,92,173,.12);
+        --radius: 18px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'DM Sans', sans-serif;
+        background: linear-gradient(180deg, #f5f2ee 0%, #eef1f7 100%);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .page-wrap {
+        width: min(520px, 100%);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .hero {
+        padding: 34px 28px 24px;
+        background: var(--accent);
+        color: #fff;
+      }
+      .hero h1 {
+        margin: 0;
+        font-family: 'DM Serif Display', serif;
+        font-size: clamp(2rem, 4vw, 2.6rem);
+        line-height: 1.05;
+      }
+      .hero p {
+        margin: 12px 0 0;
+        color: rgba(255,255,255,.8);
+        font-size: .95rem;
+      }
+      .form-panel {
+        padding: 28px;
+      }
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .form-group label {
+        font-size: .88rem;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-group input {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1.5px solid var(--border);
+        border-radius: 12px;
+        font: inherit;
+        font-size: .95rem;
+        color: var(--text);
+        background: #faf9f7;
+        outline: none;
+        transition: border-color .2s, background .2s;
+      }
+      .form-group input:focus {
+        border-color: var(--accent);
+        background: #fff;
+      }
+      .submit-btn {
+        width: 100%;
+        padding: 14px 16px;
+        border: none;
+        border-radius: 12px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background .2s, transform .1s;
+      }
+      .submit-btn:hover { background: #234887; }
+      .submit-btn:active { transform: scale(.99); }
+      .notice {
+        margin-top: 16px;
+        text-align: center;
+        font-size: .95rem;
+        color: var(--muted);
+      }
+      .notice a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .error {
+        margin: 0 0 18px;
+        padding: 14px 16px;
+        background: #ffe8e5;
+        color: #8a1f1f;
+        border: 1px solid #f3c2bb;
+        border-radius: 12px;
+        font-size: .95rem;
+      }
+    </style>
 </head>
 <body>
-    <h1>Register</h1>
+  <div class="page-wrap">
+    <section class="hero">
+      <h1>Professorenportal</h1>
+      <p>Registrierung für die Sprechstundenverwaltung</p>
+    </section>
+    <section class="form-panel">
+      <% if (messages.error) { %>
+        <div class="error"><%= messages.error %></div>
+      <% } %>
+      <form action="/register" method="post" id="form">
+        <div class="form-group">
+          <label for="firstname">Vorname</label>
+          <input type="text" id="firstname" name="firstname" required>
+        </div>
+        <div class="form-group">
+          <label for="surname">Nachname</label>
+          <input type="text" id="surname" name="surname" required>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Passwort</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <div class="form-group">
+          <label for="repassword">Passwort wiederholen</label>
+          <input type="password" id="repassword" name="repassword" required>
+        </div>
+        <button type="submit" class="submit-btn">Registrieren</button>
+      </form>
+      <div class="notice">
+        Bereits registriert? <a href="/login">Hier anmelden</a>
+      </div>
+    </section>
+  </div>
+  <script defer>
+    const form = document.getElementById('form')
 
-    <form action="/register" method="post" id="form">
-        <div>
-            <label for="firstname">Firstname:</label>
-            <input type="text" id="firstname" name="firstname" required>
-        </div>
-        <div>
-            <label for="surname">Surname:</label>
-            <input type="text" id="surname" name="surname" required>
-        </div>
-        <div>
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
-        </div>
-        <div>
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <div>
-            <label for="repassword">Reenter password:</label>
-            <input type="password" id="repassword" name="repassword" required>
-        </div>
-        <div>
-            <button type="submit">Register</button>
-        </div>
-    </form>
-
-    <a href="/login">Already have an account? Login here.</a>
-    
-    <script defer>
-        const form = document.getElementById('form')
-
-        form.addEventListener('submit', (event) => {
-            const password = document.getElementById('password').value
-            const repassword = document.getElementById('repassword').value
-            if(password !== repassword) {
-                alert('Password not equal')
-                event.preventDefault()
-            }
-        })
-    </script>
+    form.addEventListener('submit', (event) => {
+      const password = document.getElementById('password').value
+      const repassword = document.getElementById('repassword').value
+      if (password !== repassword) {
+        alert('Passwörter stimmen nicht überein.')
+        event.preventDefault()
+      }
+    })
+  </script>
 </body>
 </html>
