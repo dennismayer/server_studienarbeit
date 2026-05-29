@@ -677,7 +677,7 @@ function slotsForDate(key){
         const untilMs = new Date(slot.repeatUntil).getTime();
         if(targetMs > untilMs) continue;
       }
-      repeating.push({...slot, _virtual: true, _srcKey: srcKey});
+      repeating.push({...slot, _srcKey: srcKey});
     }
   }
   return [...direct, ...repeating];
@@ -725,12 +725,13 @@ async function chacheData() {
       return;
     }
 
-    const data = await response.json();
-
     if(!response.ok) {
       console.log(response);
       return;
     }
+
+    const data = await response.json();
+
     data.forEach(slot => {
       const key = slot.date;
       if(!state.slots[key]) state.slots[key] = [];
@@ -804,7 +805,7 @@ function makeCell(y, m, d, other, isToday){
   const MAX_SHOW = 2;
   slots.slice(0, MAX_SHOW).forEach(s=>{
     const pill = document.createElement('div');
-    pill.className = 'slot-pill' + (s.repeat||s._virtual?' repeat':'');
+    pill.className = 'slot-pill' + (s.repeat?' repeat':'');
     pill.innerHTML = `<span class="dot"></span>${s.from}–${s.to}${s.title?' · '+s.title:''}`;
     el.appendChild(pill);
   });
@@ -856,13 +857,13 @@ function renderSlotList(key){
     row.innerHTML=`
       <div class="time-badge">${s.from} – ${s.to}</div>
       <div class="slot-title-text">${s.title||'Sprechstunde'}${s.room?' <span style="color:var(--muted);font-size:.78rem">· '+s.room+'</span>':''}</div>
-      ${s.repeat||s._virtual?'<div class="repeat-badge">↻ wöchentl.</div>':''}
-      ${!s._virtual?`<button class="delete-slot" title="Löschen" data-key="${s._srcKey||key}" data-id="${s.id}">✕</button>`:''}
+      ${s.repeat?'<div class="repeat-badge">↻ wöchentl.</div>':''}
+      ${`<button class="delete-slot" title="Löschen" data-key="${s._srcKey||key}" data-id="${s.id}">✕</button>`}
     `;
     const del = row.querySelector('.delete-slot');
     if(del) del.addEventListener('click', async (e)=>{
       e.stopPropagation();
-      deleteSlot(del.dataset.key, del.dataset.id);
+      await deleteSlot(del.dataset.key, del.dataset.id);
     });
     list.appendChild(row);
   });
@@ -944,14 +945,14 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
         }
       )
     })
-
-    const data = await response.json()
-
+    
     if(!response.ok) {
       alert('Hinzufügen fehlgeschlagen!')
       console.log(response, data)
       return
     }
+
+    const data = await response.json()
 
     if(!state.slots[key]) state.slots[key]=[];
     state.slots[key].push({

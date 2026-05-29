@@ -166,6 +166,15 @@
         alert('Passwörter stimmen nicht überein.')
         event.preventDefault()
       }
+
+      const email = document.getElementById('email').value
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+      if (!email || !emailPattern.test(email)) {
+        alert('Bitte gib eine gültige E-Mail-Adresse ein.')
+        event.preventDefault()
+      }
+
     })
   </script>
 </body>
