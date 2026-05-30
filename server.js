@@ -199,6 +199,69 @@ app.delete('/api/slot_data', checkAuthenticated, async (req, res) => {
     }
 })
 
+// API endpoint to fetch the next upcoming time slot for the authenticated user, with the current date and time provided as query parameters
+app.get('/api/slot_data/get_next_timeslot', async (req, res) => {
+    try {
+        // query to get the next upcoming time slot for the authenticated user, ordered by date and time
+        const result = await pool.query(
+            `WITH event_occurrences AS (
+                SELECT
+                    e.*,
+                    CASE
+                        -- One-time event
+                        WHEN e.repeat = false THEN
+                            CASE
+                                WHEN e.date >= $2
+                                THEN e.date
+                            END
+
+                        -- Weekly recurring event
+                        WHEN e.repeat = true THEN
+                            CASE
+                                WHEN e.date >= $2 THEN
+                                    e.date
+                                ELSE
+                                    e.date +
+                                    (
+                                        CEIL(
+                                            ($2 - e.date)::numeric / 7
+                                        )::int * 7
+                                    )
+                            END
+                    END AS next_occurrence
+                FROM time_slots e
+                WHERE e.user_id = $1
+            )
+            SELECT next_occurrence, "from", "to", room
+            FROM event_occurrences
+            WHERE
+                next_occurrence IS NOT NULL
+                AND (
+                    "repeatUntil" IS NULL
+                    OR next_occurrence <= "repeatUntil"
+                ) 
+                AND (
+                    next_occurrence != $2
+                    OR "to" > $3
+                )
+            ORDER BY next_occurrence, "from"
+            LIMIT 1`,
+            [req.query.id, req.query.currentDate, req.query.currentTime]
+        )
+        
+        // if there is a result, send it as JSON response with a 200 OK status, otherwise send a 204 No Content status
+        if(result.rows.length > 0) {
+            res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(result.rows[0]))
+        } else {
+            res.sendStatus(204)
+        }
+    } catch (e) {
+        // if there is an error while fetching the next time slot, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching next time slot'}))
+    }
+})
+
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {
     if(req.isAuthenticated()) {
