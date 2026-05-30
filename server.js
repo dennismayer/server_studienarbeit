@@ -5,7 +5,7 @@ if(process.env.NODE_ENV !== 'production') {
 
 // import necessary modules
 const express = require('express')
-const {Client} = require('pg')
+const {Pool} = require('pg')
 const bcrypt = require('bcrypt')
 const passport = require('passport')
 const flash = require('express-flash')
@@ -16,8 +16,8 @@ const path = require('path')
 // create express app -> base for server
 const app = express()
 
-// create a new PostgreSQL client using environment variables for configuration
-const client = new Client({
+// create a new PostgreSQL pool using environment variables for configuration
+const pool = new Pool({
     user: process.env.USER_DATABASE,
     host: process.env.HOST_DATABASE,
     database: process.env.DATABASE,
@@ -26,7 +26,7 @@ const client = new Client({
 })
 
 // start connection to PostgreSQL server
-client.connect()
+pool.connect()
     .then(() => console.log('Connected to PostgreSQL'))
     .catch(err => console.error('PostgreSQL connection error', err))
 
@@ -37,14 +37,14 @@ const initializePassport = require('./passwort-config')
 initializePassport(
     passport,
     async (email) => {
-        const result = await client.query('SELECT * FROM users WHERE email = $1', [email])
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email])
         if (result.rows.length > 0) {
             return result.rows[0]
         }
         return null
     },
     async (id) => {
-        const result = await client.query('SELECT * FROM users WHERE user_id = $1', [id])
+        const result = await pool.query('SELECT * FROM users WHERE user_id = $1', [id])
         if (result.rows.length > 0) {
             return result.rows[0]
         }
@@ -97,7 +97,7 @@ app.post('/register', checkNotAthenticated, async (req, res) => {
         const hashed_password = await bcrypt.hash(req.body.password, 10)
 
         // insert new user into the database with the provided surname, firstname, email and hashed password
-        await client.query(
+        await pool.query(
             `INSERT INTO users (surname, firstname, email, password) 
              VALUES ($1, $2, $3, $4)`,
             [req.body.surname, req.body.firstname, req.body.email, hashed_password]
@@ -128,7 +128,7 @@ app.delete('/logout', checkAuthenticated, (req, res, next) => {
 app.get('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
         // load data
-        const result = await client.query(
+        const result = await pool.query(
             `SELECT date, id, "from", "to", title, room, repeat, "repeatUntil" 
              FROM time_slots 
              WHERE date >= $1 AND date <= $2 AND user_id = $3 AND repeat = false
@@ -163,7 +163,7 @@ app.get('/api/slot_data', checkAuthenticated, async (req, res) => {
 app.post('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
         // insert data into the database, returning the id of the newly created time slot
-        const query = await client.query(
+        const query = await pool.query(
             `INSERT INTO time_slots (date, user_id, "from", "to", title, room, repeat, "repeatUntil") 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
              RETURNING id`,
@@ -185,7 +185,7 @@ app.delete('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
         // delete time slot -> id is used to verify that the time slot belongs to the authenticated user, 
         // preventing unauthorized deletion of other users' time slots
-        await client.query(
+        await pool.query(
             `DELETE FROM time_slots 
              WHERE id = $1 AND user_id = $2`,
             [req.body.id, req.user.user_id]
@@ -220,30 +220,25 @@ function checkNotAthenticated(req, res, next) {
 // start the server on port 8080 and log a message to the console, also set up handlers for graceful shutdown on receiving termination signals
 const server = app.listen(8080, () => console.log('Server running on Port 8080'))
 
+// flag to track if shutdown is already in progress
+let isShuttingDown = false
+
 // handle graceful shutdown on SIGTERM, SIGINT and SIGUSR2 signals by closing the server and database connection before exiting the process
-process.on('SIGTERM', () => {
-  console.log('\nSIGTERM signal received.');
-  server.close(() => {
-    console.log('Closed out remaining connections');
-    client.end();
-    process.exit(0);
-  });
-});
+async function shutdown(sigName) {
+    // prevent multiple shutdown attempts
+    if (isShuttingDown) {
+        return
+    }
+    isShuttingDown = true
+    
+    console.log(`Shutting down server on ${sigName}...`);
+    server.close(async () => {
+        console.log('Closed out remaining connections');
+        await pool.end();
+        process.exit(0);
+    });
+}
 
-process.on('SIGINT', () => {
-  console.log('\nSIGINT signal received.');
-  server.close(() => {
-    console.log('Closed out remaining connections');
-    client.end();
-    process.exit(0);
-  });
-});
-
-process.on('SIGUSR2', () => {
-  console.log('SIGUSR2 signal received.');
-  server.close(() => {
-    console.log('Closed out remaining connections');
-    client.end();
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
+process.on('SIGUSR2', shutdown)
