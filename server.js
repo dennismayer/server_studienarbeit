@@ -72,6 +72,11 @@ app.get('/', checkAuthenticated, (req, res) => {
     res.render('index.ejs', { name:req.user.surname })
 })
 
+// load messages page if authenticated, otherwise redirect to login page
+app.get('/nachrichten', checkAuthenticated, (req, res) => {
+    res.render('nachrichten.ejs')
+})
+
 // load login page if not authenticated, otherwise redirect to index page
 app.get('/login', checkNotAthenticated, (req, res) => {
     res.render('login.ejs')

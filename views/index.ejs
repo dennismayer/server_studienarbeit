@@ -95,6 +95,9 @@
     border-radius: 12px;
     cursor: pointer;
     font-size: .95rem;
+    font-family: inherit;
+    text-decoration: none;
+    display: block;
     transition: background .2s, color .2s;
   }
   .sidebar-item:hover {
@@ -543,8 +546,8 @@
   <aside class="sidebar">
     <div class="sidebar-panel">
       <div class="sidebar-title">Portal</div>
-      <button class="sidebar-item active" type="button">Kalender</button>
-      <button class="sidebar-item" type="button">Nachrichten</button>
+      <a class="sidebar-item active" href="/">Kalender</a>
+      <a class="sidebar-item" href="/nachrichten">Nachrichten</a>
       <button class="sidebar-item" type="button">Benutzerinformationen</button>
     </div>
   </aside>
