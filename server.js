@@ -342,11 +342,72 @@ app.post('/api/messages', async (req, res) => {
     }
 })
 
-app.get('/api/messages', (req, res) => {
-
+app.get('/api/messages', async (req, res) => {
+    try {
+        // load data
+        const result = await pool.query(
+            `SELECT id, sender_name, body, audio_duration_s, is_read, created_at
+             FROM messages
+             WHERE $1
+             ORDER BY created_at DESC`,
+            [req.user.user_id]
+        )
+        
+        // if there are results, send them as JSON, otherwise send a 204 No Content status
+        if(result.rows.length > 0) {
+            res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(result.rows))
+        } else {
+            res.sendStatus(204)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+    }
 })
 
+app.get('/api/messages/:id/audio-url', async (req, res) => {
+    try {
+        // get key from database
+        const result = await pool.query(
+            `SELECT audio_key
+             FROM messages
+             WHERE user_id = $1 AND id = $2
+            `,
+            [req.user.user_id, req.params.id]
+        )
 
+        // check if a result turned up
+        if(result.rows.length > 0) {
+            // object was found. Save result
+            var audio_key = result.rows[0].audio_key
+        } else {
+            // object was not found in database
+            res.sendStatus(404)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+    }
+
+    try {
+        const file_url = await getSignedUrl(s3Client, new GetObjectCommand({
+            Bucket: process.env.BUCKET_NAME,
+            Key: audio_key,
+            ContentType: 'audio/wav'
+        }), { expiresIn: 1 * 60 })
+
+        res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: file_url}))
+
+    } catch (e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(404).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error Object not found'}))
+    }
+})
+
+//=========================================================================================
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {
