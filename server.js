@@ -1,17 +1,36 @@
+import dotenv from 'dotenv'
+
 // checks if we are in production, if not load the .env file
 if(process.env.NODE_ENV !== 'production') {
-    require('dotenv').config()
+    dotenv.config()
 }
 
 // import necessary modules
-const express = require('express')
-const {Pool} = require('pg')
-const bcrypt = require('bcrypt')
-const passport = require('passport')
-const flash = require('express-flash')
-const session = require('express-session')
-const methodOverride = require('method-override')
-const path = require('path')
+import express from 'express'
+import { Pool } from 'pg'
+import bcrypt from 'bcrypt'
+import passport from 'passport'
+import flash from 'express-flash'
+import session from 'express-session'
+import methodOverride from 'method-override'
+import path from 'path'
+import { v4 as uuidv4 } from 'uuid'
+
+// import AWS s3 client
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { fromIni } from "@aws-sdk/credential-provider-ini";
+
+// create dirname path
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // create express app -> base for server
 const app = express()
@@ -30,8 +49,22 @@ pool.connect()
     .then(() => console.log('Connected to PostgreSQL'))
     .catch(err => console.error('PostgreSQL connection error', err))
 
+// start s3Client
+var s3Client;
+if(process.env.NODE_ENV !== 'production') {
+    s3Client = new S3Client({
+        credentials: fromIni({ profile: "s3_access" }),
+        requestChecksumCalculation: 'WHEN_REQUIRED'
+    });
+} else {
+    s3Client = new S3Client({
+        region: process.env.AWS_REGION,
+        requestChecksumCalculation: 'WHEN_REQUIRED'
+    });
+}
+
 // get passport init function from seperate .js file
-const initializePassport = require('./passwort-config')
+import initializePassport from './passwort-config.js'
 
 // initialize passport include functions for retrieving user by email and id from database
 initializePassport(
@@ -266,6 +299,54 @@ app.get('/api/slot_data/get_next_timeslot', async (req, res) => {
         res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching next time slot'}))
     }
 })
+
+//=========================================================================================
+// API end points for audio messages via s3
+//=========================================================================================
+// in -> user_id, sender_name, body, audio_duration_s, need audio?
+app.post('/api/messages', async (req, res) => {
+    try {
+        const user_id = req.body.user_id
+        const sender_name = req.body.sender_name
+        const message = req.body.message
+        const audio_duration_s = req.body.audio_duration_s
+        var audio_key = ""
+        var upload_url = ""
+
+        // url Generieriung
+        if(req.body.send_file) {
+            audio_key = uuidv4()
+            upload_url = await getSignedUrl(s3Client, new PutObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: audio_key,
+                ContentType: 'audio/wav'
+            }), { expiresIn: 15 * 60 })
+        }
+
+        // Anlegen des Eintrages
+        await pool.query(
+            `INSERT INTO messages(user_id, sender_name, body, audio_key, audio_duration_s)
+            VALUES ($1, $2, $3, $4, $5)`,
+            [user_id, sender_name, message, audio_key, audio_duration_s]
+        )
+
+        if(req.body.send_file) {
+            res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: upload_url}))
+        } else {
+            res.sendStatus(200)
+        }
+
+    } catch (error) {
+        console.log(error)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while trying to reach S3 or pg'}))
+    }
+})
+
+app.get('/api/messages', (req, res) => {
+
+})
+
+
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {
