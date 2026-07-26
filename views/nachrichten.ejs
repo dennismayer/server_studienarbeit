@@ -279,6 +279,40 @@
     min-width: 78px;
     text-align: right;
   }
+  .play-btn:disabled { cursor: default; }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Player error / retry ── */
+  .player-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: .8rem;
+    color: #c0392b;
+  }
+  .player-error[hidden] { display: none; }
+  .player-error-text { min-width: 0; }
+  .player-retry {
+    flex-shrink: 0;
+    border: 1.5px solid #f3c2bd;
+    background: #fce8e6;
+    color: #c0392b;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: .78rem;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .player-retry:hover { background: #f9d9d5; }
 
   /* ── Delete button (matches the calendar's slot-row delete) ── */
   .msg-delete {
@@ -394,6 +428,7 @@
 const ICON_PLAY  = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm4 2v8h1v-8h-1zm3 0v8h1v-8h-1z"/></svg>';
+const ICON_SPINNER = '<span class="spinner" aria-hidden="true"></span>';
 
 // ── Helpers ──
 function pad2(n){ return String(n).padStart(2, '0'); }
@@ -464,10 +499,14 @@ const MOCK_MESSAGES = [
   { id: 3, sender_name: 'Jonas Weber',     body: 'Konnte den Sprechstundentermin nicht wahrnehmen und erklärt sein Anliegen in der Aufnahme.', audio_duration_s: 22, is_read: true,  created_at: minutesAgoISO(60 * 26) },
   { id: 4, sender_name: 'Lena Fischer',    body: 'Dankt für das Feedback zum Praktikumsbericht und hat eine kurze Anschlussfrage hinterlassen.', audio_duration_s: 6,  is_read: true,  created_at: minutesAgoISO(60 * 24 * 4) },
 ];
-MOCK_MESSAGES.forEach((m, i) => { m.audioUrl = makeToneUrl(m.audio_duration_s, 300 + i * 80); });
+// Mock-only: a tone frequency per message so getAudioUrl() can synthesize a
+// distinct, playable clip on demand. Real messages carry no such field.
+MOCK_MESSAGES.forEach((m, i) => { m._freq = 300 + i * 80; });
 
 // TODO(author): wire up GET /api/messages — fetch the logged-in professor's
-// messages, newest first. Replace the mock return below with:
+// messages, newest first. The list response carries only metadata (NO audio
+// URL — that is fetched per message at play time, see getAudioUrl). Replace
+// the mock return below with:
 //   const res = await fetch('/api/messages');
 //   if(res.status === 204) return [];
 //   if(!res.ok) throw new Error('Fehler beim Laden der Nachrichten');
@@ -476,6 +515,24 @@ async function loadMessages(){
   return MOCK_MESSAGES
     .slice()
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+// TODO(author): wire up GET /api/messages/:id/audio-url — return a FRESH,
+// short-lived presigned S3 URL for this message's audio, generated on demand.
+// Fetching at play time (rather than at list time) keeps the URL only seconds
+// old, so presigned-URL expiry can never be hit. Replace the mock body with:
+//   const res = await fetch('/api/messages/' + id + '/audio-url');
+//   if(!res.ok) throw new Error('Audio-URL konnte nicht geladen werden');
+//   const data = await res.json();
+//   return data.audioUrl;
+async function getAudioUrl(id){
+  // --- MOCK: simulate a short network delay, then synthesize a playable tone.
+  //     To exercise the error handler, temporarily `throw new Error('test')`
+  //     here, or return a broken URL like 'https://example.invalid/x.mp3'.
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const m = MOCK_MESSAGES.find(x => x.id === id);
+  if(!m) throw new Error('Nachricht nicht gefunden');
+  return makeToneUrl(m.audio_duration_s, m._freq);
 }
 
 // ── State ──
@@ -520,6 +577,10 @@ function buildCard(m){
         '<div class="progress" role="slider" aria-label="Wiedergabefortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill"></div></div>' +
         '<div class="time">0:00 / ' + fmtTime(m.audio_duration_s || 0) + '</div>' +
       '</div>' +
+      '<div class="player-error" hidden role="alert">' +
+        '<span class="player-error-text"></span>' +
+        '<button class="player-retry" type="button">Erneut versuchen</button>' +
+      '</div>' +
     '</div>' +
     '<button class="msg-delete" type="button" title="Nachricht löschen" aria-label="Nachricht löschen">' + ICON_TRASH + '</button>';
 
@@ -533,7 +594,11 @@ function wirePlayer(card, m){
   const track     = card.querySelector('.progress');
   const fill      = card.querySelector('.progress-fill');
   const timeLabel = card.querySelector('.time');
+  const errorBox  = card.querySelector('.player-error');
+  const errorText = card.querySelector('.player-error-text');
+  const retryBtn  = card.querySelector('.player-retry');
   let audio = null;
+  let loading = false;
 
   const setIcon = playing => { playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY; };
   const totalOf = () => (audio && isFinite(audio.duration) ? audio.duration : (m.audio_duration_s || 0));
@@ -547,10 +612,19 @@ function wirePlayer(card, m){
     timeLabel.textContent = fmtTime(cur) + ' / ' + fmtTime(total);
   }
 
+  function showError(msg){ errorText.textContent = msg; errorBox.hidden = false; }
+  function clearError(){ errorBox.hidden = true; }
+
+  function setLoading(on){
+    loading = on;
+    playBtn.disabled = on;
+    if(on) playBtn.innerHTML = ICON_SPINNER;
+  }
+
   function ensureAudio(){
     if(audio) return audio;
-    audio = new Audio(m.audioUrl);
-    audio.preload = 'metadata';
+    audio = new Audio();
+    audio.preload = 'none';
     audio.addEventListener('loadedmetadata', updateUi);
     audio.addEventListener('timeupdate', updateUi);
     audio.addEventListener('ended', () => {
@@ -559,34 +633,81 @@ function wirePlayer(card, m){
       updateUi();
       if(activePlayer && activePlayer.audio === audio) activePlayer = null;
     });
+    // Fires when the media resource fails to load — e.g. an expired presigned
+    // URL returns 403, or the connection drops mid-load.
+    audio.addEventListener('error', () => {
+      if(loading) return; // a src swap is in flight; the play() path reports it
+      setIcon(false);
+      if(activePlayer && activePlayer.audio === audio) activePlayer = null;
+      showError('Sprachnachricht konnte nicht abgespielt werden.');
+    });
     return audio;
   }
 
   function stop(){ if(audio) audio.pause(); setIcon(false); }
 
-  playBtn.addEventListener('click', () => {
+  async function startPlayback(){
+    if(loading) return;
     ensureAudio();
-    if(!audio.paused){
+    clearError();
+
+    // Resume in place if we already have a valid, partly-played source.
+    const canResume = audio.src && !audio.error &&
+                      audio.currentTime > 0 &&
+                      (!isFinite(audio.duration) || audio.currentTime < audio.duration);
+
+    if(!canResume){
+      setLoading(true);
+      let url;
+      try {
+        url = await getAudioUrl(m.id);            // fresh presigned URL, just-in-time
+      } catch (e){
+        setLoading(false);
+        setIcon(false);
+        showError('Sprachnachricht konnte nicht geladen werden.');
+        return;
+      }
+      // Release a previous mock blob URL (no-op for real https URLs).
+      if(audio.src && audio.src.indexOf('blob:') === 0) URL.revokeObjectURL(audio.src);
+      audio.src = url;
+      audio.currentTime = 0;
+    }
+
+    if(activePlayer && activePlayer.audio !== audio) activePlayer.stop();
+
+    try {
+      await audio.play();
+      setLoading(false);
+      setIcon(true);
+      activePlayer = { audio, stop, card };
+      if(!m.is_read) markRead(m.id, card);
+    } catch (e){
+      setLoading(false);
+      setIcon(false);
+      showError('Sprachnachricht konnte nicht abgespielt werden.');
+    }
+  }
+
+  playBtn.addEventListener('click', () => {
+    if(loading) return;
+    if(audio && audio.src && !audio.paused){
       audio.pause();
       setIcon(false);
       return;
     }
-    if(activePlayer && activePlayer.audio !== audio) activePlayer.stop();
-    audio.play()
-      .then(() => { setIcon(true); activePlayer = { audio, stop, card }; })
-      .catch(() => {});
-    if(!m.is_read) markRead(m.id, card);
+    startPlayback();
   });
 
+  retryBtn.addEventListener('click', () => { clearError(); startPlayback(); });
+
   track.addEventListener('click', e => {
-    ensureAudio();
+    if(!audio || !audio.src || audio.error) return; // seek only once a source is loaded
+    const total = totalOf();
+    if(!total) return;
     const rect = track.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    const total = totalOf();
-    if(total){
-      audio.currentTime = ratio * total;
-      updateUi();
-    }
+    audio.currentTime = ratio * total;
+    updateUi();
   });
 }
 
