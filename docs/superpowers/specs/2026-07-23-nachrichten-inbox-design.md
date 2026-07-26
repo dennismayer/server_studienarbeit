@@ -1,6 +1,8 @@
 # Nachrichten (Messages) Inbox — Design
 
 **Date:** 2026-07-23
+**Revised:** 2026-07-26 — audio URL is now fetched per message **at play time**
+(Option 2) instead of in the list response, plus a player **error/retry** handler.
 **Status:** Approved (frontend scope)
 **Area:** Frontend page + proposed DB schema for the Professorenportal
 
@@ -42,16 +44,30 @@ Each message represents one student drop-off:
 There is **no** sender email/contact and **no** reply/compose flow — this is a
 one-way, read-only inbox with a delete action.
 
-## Audio delivery — decision: Approach A (presigned URL)
+## Audio delivery — decision: Approach A (presigned URL), fetched on demand
 
-The S3 bucket stays **private**. The DB stores only the S3 **object key**. The
-`GET /api/messages` route uses the AWS SDK to generate a **short-lived presigned
-URL** per message and returns it to the client as `audioUrl`. The frontend simply
-plays whatever `audioUrl` string it receives, so the frontend is identical
-regardless of delivery method.
+The S3 bucket stays **private**. The DB stores only the S3 **object key**. A
+dedicated route uses the AWS SDK to generate a **short-lived presigned URL** for a
+single message's audio, and the frontend requests it **just-in-time, when the
+professor presses play** — not in the message list.
+
+Why fetch per message at play time (rather than presigning every row in the list
+response):
+
+- A presigned URL expires (e.g. 15–30 min). If it were minted at list time and
+  the professor left the tab open past the expiry, playback would fail with a
+  `403`. Fetching seconds before playback means expiry can never be hit.
+- The list response stays cheaper — no signing work for messages that are never
+  played.
+
+Consequence for the contract: `GET /api/messages` returns **no** audio URL (only
+metadata); a new **`GET /api/messages/:id/audio-url`** returns the fresh URL on
+demand. The frontend still just plays whatever URL string it receives.
 
 Alternatives considered and rejected:
 
+- **Presign at list time** — one fewer endpoint, but subject to the expiry
+  problem above once the tab sits open.
 - **Public URL** — simplest backend, but voice messages would be publicly
   reachable by anyone with the link; poor student privacy.
 - **Proxy stream** through Express — keeps the bucket private without presigning,
@@ -84,22 +100,29 @@ Notes:
 | Method & route | Purpose | Notes |
 |---|---|---|
 | `GET /nachrichten` | Render `nachrichten.ejs` | Behind `checkAuthenticated`, pass `name: req.user.surname` like `/`. |
-| `GET /api/messages` | List the professor's messages, newest-first | Each row includes a presigned `audioUrl`. Return `204` when empty (matches the slot API convention). |
+| `GET /api/messages` | List the professor's messages, newest-first | **Metadata only — no audio URL** (see the audio-url route). Return `204` when empty (matches the slot API convention). |
+| `GET /api/messages/:id/audio-url` | Fresh presigned S3 URL for one message's audio | Generated **on demand at play time**; returns `{ audioUrl }`. Scope `AND user_id = <session user>`. |
 | `POST /api/messages/:id/read` | Mark one message read | Scope `AND user_id = <session user>`. |
 | `DELETE /api/messages` | Delete by `id` | Body `{ id }`, scoped `AND user_id = $2` — mirrors the existing `time_slots` delete exactly. |
 
-Response shape the frontend consumes per message:
+Response shape the frontend consumes per message from `GET /api/messages` (note:
+**no `audioUrl`** — that comes separately from the audio-url route):
 
 ```json
 {
   "id": 12,
   "sender_name": "Max Mustermann",
   "body": "… context text …",
-  "audioUrl": "https://…s3…/presigned…",
   "audio_duration_s": 14,
   "is_read": false,
   "created_at": "2026-07-23T09:12:00Z"
 }
+```
+
+And `GET /api/messages/:id/audio-url` returns:
+
+```json
+{ "audioUrl": "https://…s3…/presigned…" }
 ```
 
 ## Frontend page — `views/nachrichten.ejs`
@@ -127,29 +150,38 @@ Display` / `DM Sans`, `:root` palette, sidebar, top-right Abmelden button).
 
 **States**
 - Empty: "Keine Nachrichten vorhanden."
-- First play (or card open) → optimistic mark-read + `POST /api/messages/:id/read`
+- Loading a clip → the play button shows a spinner while the audio URL is fetched.
+- Playback failure (expired URL `403`, network drop) → inline error message with an
+  **"Erneut versuchen"** retry button that re-fetches a fresh URL and retries.
+- Successful playback start → optimistic mark-read + `POST /api/messages/:id/read`
   (`TODO(author)`).
 - Delete → optimistic card removal + `DELETE /api/messages` (`TODO(author)`).
 
 ## Data boundary (mock strategy)
 
-- In-page `MOCK_MESSAGES` array feeds a `loadMessages()` stub that currently
-  returns the mock data; the real request site carries
-  `// TODO(author): wire up GET /api/messages`.
-- Mock messages reference a small sample audio clip so the custom player is fully
-  demonstrable offline.
+- In-page `MOCK_MESSAGES` array feeds a `loadMessages()` stub (metadata only); the
+  real request site carries `// TODO(author): wire up GET /api/messages`.
+- A `getAudioUrl(id)` stub returns the play-time URL, carrying
+  `// TODO(author): wire up GET /api/messages/:id/audio-url`. For the mock it
+  synthesizes a short playable WAV tone on demand, so the custom player is fully
+  demonstrable offline (a comment marks where to force an error to exercise the
+  retry path).
 - `markRead()` and `deleteMessage()` update the UI optimistically and carry
   `// TODO(author): wire up …` at the request site. No `fetch` is written.
 
 ## Custom audio player behavior
 
-- One lazily-created `HTMLAudioElement` per card (or a shared element retargeted
-  per card).
+- One lazily-created `HTMLAudioElement` per card, with its source set at play time.
+- **Play** fetches a fresh URL via `getAudioUrl(id)` (spinner shown, button
+  disabled), sets it as the source, and plays. **Pause → play** resumes in place
+  without re-fetching; a fresh start (or after error/ended) fetches a new URL.
 - `timeupdate` → progress-bar width + current-time label; `loadedmetadata` →
   total-time label (falls back to `audio_duration_s` before load).
-- Click on progress bar → seek.
+- Click on progress bar → seek (only once a source is loaded).
 - Starting playback pauses any currently-playing message (single-active-player).
-- First playback triggers `markRead()`.
+- Successful playback start triggers `markRead()`; a failed load does not.
+- An `error` listener plus the `play()`/fetch `catch` surface a retryable inline
+  error; mock blob URLs are revoked on replace to avoid leaks.
 
 ## Out of scope / non-goals
 
