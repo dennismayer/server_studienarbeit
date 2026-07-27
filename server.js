@@ -372,8 +372,7 @@ app.get('/api/messages/:id/audio-url', async (req, res) => {
         const result = await pool.query(
             `SELECT audio_key
              FROM messages
-             WHERE user_id = $1 AND id = $2
-            `,
+             WHERE user_id = $1 AND id = $2`,
             [req.user.user_id, req.params.id]
         )
 
@@ -389,6 +388,7 @@ app.get('/api/messages/:id/audio-url', async (req, res) => {
         // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
         console.error(e)
         res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+        return
     }
 
     try {
@@ -407,6 +407,87 @@ app.get('/api/messages/:id/audio-url', async (req, res) => {
     }
 })
 
+app.post('/api/messages/:id/read', async (req, res) => {
+    try {
+        const response = await pool.query(
+            `UPDATE messages
+             SET is_read=true
+             WHERE user_id = $1 AND id = $2`,
+             [req.user.user_id, req.params.id]
+        )
+
+        res.sendStatus(200)
+    } catch (e) {
+        // if there is an error while updating data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(404).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating data'}))
+    }
+})
+
+app.delete('/api/messages', async (req, res) => {
+    const id = req.body.id
+    const user_id = req.user.user_id
+
+    try {
+        // get key from database
+        const result = await pool.query(
+            `SELECT audio_key
+             FROM messages
+             WHERE user_id = $1 AND id = $2`,
+            [user_id, id]
+        )
+
+        // check if a result turned up
+        if(result.rows.length > 0) {
+            // object was found. Save result
+            var audio_key = result.rows[0].audio_key
+        } else {
+            // object was not found in database
+            res.sendStatus(404)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+        return
+    }
+
+    if(audio_key != '') {
+        try {
+            const response = await s3Client.send(new DeleteObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: audio_key
+            }))
+
+            if(response.status == 403) {
+                console.log('Object had no bucket entry')
+            }
+
+            console.log(response)
+        } catch (e) {
+            // if there is an error while deleting data, log the error and send a 400 Bad Request status with an appropriate message
+            console.error(e)
+            res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while deleting S3 object'}))
+            return
+        }
+    }
+
+    try {
+        const response = await pool.query(
+            `DELETE FROM messages
+             WHERE user_id = $1 AND id=$2`,
+             [user_id, id]
+        )
+        console.log(response)
+
+        res.sendStatus(200)
+    } catch (e) {
+        // if there is an error while deleting data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while deleting database entry'}))
+        return
+    }
+})
 //=========================================================================================
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
