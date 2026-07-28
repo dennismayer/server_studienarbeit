@@ -342,7 +342,7 @@ app.post('/api/messages', async (req, res) => {
     }
 })
 
-app.get('/api/messages', async (req, res) => {
+app.get('/api/messages', checkAuthenticated, async (req, res) => {
     try {
         // load data
         const result = await pool.query(
@@ -366,14 +366,17 @@ app.get('/api/messages', async (req, res) => {
     }
 })
 
-app.get('/api/messages/:id/audio-url', async (req, res) => {
+app.get('/api/messages/:id/audio-url', checkAuthenticated, async (req, res) => {
+    const user_id = req.user.user_id
+    const id = req.params.id
+
     try {
         // get key from database
         const result = await pool.query(
             `SELECT audio_key
              FROM messages
              WHERE user_id = $1 AND id = $2`,
-            [req.user.user_id, req.params.id]
+            [user_id, id]
         )
 
         // check if a result turned up
@@ -407,13 +410,16 @@ app.get('/api/messages/:id/audio-url', async (req, res) => {
     }
 })
 
-app.post('/api/messages/:id/read', async (req, res) => {
+app.post('/api/messages/:id/read', checkAuthenticated, async (req, res) => {
+    const user_id = req.user.user_id
+    const id = req.params.id
+
     try {
         const response = await pool.query(
             `UPDATE messages
              SET is_read=true
              WHERE user_id = $1 AND id = $2`,
-             [req.user.user_id, req.params.id]
+             [user_id, id]
         )
 
         res.sendStatus(200)
@@ -424,7 +430,7 @@ app.post('/api/messages/:id/read', async (req, res) => {
     }
 })
 
-app.delete('/api/messages', async (req, res) => {
+app.delete('/api/messages', checkAuthenticated, async (req, res) => {
     const id = req.body.id
     const user_id = req.user.user_id
 
