@@ -454,85 +454,28 @@ function relTime(iso){
   return then.toLocaleDateString('de-DE', { day:'numeric', month:'long', year:'numeric' });
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MOCK DATA — remove when the API is wired up.
-//  Synthesizes a short audible tone as a playable WAV so the
-//  custom player is demonstrable offline. Real messages will
-//  instead carry an `audioUrl` (presigned S3 URL) from the API.
-// ─────────────────────────────────────────────────────────────
-function makeToneUrl(durationSec, freq){
-  const sampleRate = 8000;
-  const numSamples = Math.floor(durationSec * sampleRate);
-  const dataSize = numSamples * 2;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeStr = (off, str) => { for(let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, dataSize, true);
-  let off = 44;
-  for(let i = 0; i < numSamples; i++){
-    const t = i / sampleRate;
-    const env = Math.min(1, t * 4, (durationSec - t) * 4);
-    const sample = Math.sin(2 * Math.PI * freq * t) * 0.22 * env;
-    view.setInt16(off, sample * 0x7fff, true);
-    off += 2;
-  }
-  return URL.createObjectURL(new Blob([view], { type: 'audio/wav' }));
-}
-
-function minutesAgoISO(min){ return new Date(Date.now() - min * 60000).toISOString(); }
-
-const MOCK_MESSAGES = [
-  { id: 1, sender_name: 'Max Mustermann',  body: 'Hat Unterlagen zur Bachelorarbeit im Sekretariat hinterlassen und eine Sprachnachricht mit Rückfragen aufgenommen.', audio_duration_s: 14, is_read: false, created_at: minutesAgoISO(25) },
-  { id: 2, sender_name: 'Anna Schröder',   body: 'Bittet um einen kurzen Rückruf wegen der Prüfungsanmeldung – Details in der Sprachnachricht.', audio_duration_s: 9,  is_read: false, created_at: minutesAgoISO(180) },
-  { id: 3, sender_name: 'Jonas Weber',     body: 'Konnte den Sprechstundentermin nicht wahrnehmen und erklärt sein Anliegen in der Aufnahme.', audio_duration_s: 22, is_read: true,  created_at: minutesAgoISO(60 * 26) },
-  { id: 4, sender_name: 'Lena Fischer',    body: 'Dankt für das Feedback zum Praktikumsbericht und hat eine kurze Anschlussfrage hinterlassen.', audio_duration_s: 6,  is_read: true,  created_at: minutesAgoISO(60 * 24 * 4) },
-];
-// Mock-only: a tone frequency per message so getAudioUrl() can synthesize a
-// distinct, playable clip on demand. Real messages carry no such field.
-MOCK_MESSAGES.forEach((m, i) => { m._freq = 300 + i * 80; });
-
-// TODO(author): wire up GET /api/messages — fetch the logged-in professor's
-// messages, newest first. The list response carries only metadata (NO audio
-// URL — that is fetched per message at play time, see getAudioUrl). Replace
-// the mock return below with:
-//   const res = await fetch('/api/messages');
-//   if(res.status === 204) return [];
-//   if(!res.ok) throw new Error('Fehler beim Laden der Nachrichten');
-//   return await res.json();
 async function loadMessages(){
-  return MOCK_MESSAGES
-    .slice()
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  try {
+    const res = await fetch('/api/messages')
+    if(res.status === 204) return [];
+    if(!res.ok) throw new Error('Fehler beim Laden der Nachrichten');
+    return await res.json();
+  } catch (e) {
+    console.log(e)
+    return []
+  }
 }
 
-// TODO(author): wire up GET /api/messages/:id/audio-url — return a FRESH,
-// short-lived presigned S3 URL for this message's audio, generated on demand.
-// Fetching at play time (rather than at list time) keeps the URL only seconds
-// old, so presigned-URL expiry can never be hit. Replace the mock body with:
-//   const res = await fetch('/api/messages/' + id + '/audio-url');
-//   if(!res.ok) throw new Error('Audio-URL konnte nicht geladen werden');
-//   const data = await res.json();
-//   return data.audioUrl;
 async function getAudioUrl(id){
-  // --- MOCK: simulate a short network delay, then synthesize a playable tone.
-  //     To exercise the error handler, temporarily `throw new Error('test')`
-  //     here, or return a broken URL like 'https://example.invalid/x.mp3'.
-  await new Promise(resolve => setTimeout(resolve, 200));
-  const m = MOCK_MESSAGES.find(x => x.id === id);
-  if(!m) throw new Error('Nachricht nicht gefunden');
-  return makeToneUrl(m.audio_duration_s, m._freq);
+  try {
+    const res = await fetch('/api/messages/' + id + '/audio-url');
+    if(!res.ok) throw new Error('Audio-URL konnte nicht geladen werden');
+    const data = await res.json();
+    return data.url;
+  } catch (e) {
+    console.log(e)
+    return ''
+  }
 }
 
 // ── State ──
@@ -718,8 +661,11 @@ function markRead(id, card){
   m.is_read = true;
   card.classList.remove('unread');
   updateUnreadCount();
-  // TODO(author): wire up POST /api/messages/:id/read — persist the read state.
-  //   fetch('/api/messages/' + id + '/read', { method: 'POST' });
+  try {
+    fetch('/api/messages/' + id + '/read', { method: 'POST' });
+  } catch (e) {
+    console.log(e)
+  }
 }
 
 // ── Delete ──
@@ -735,13 +681,15 @@ function deleteMessage(id, card){
     if(!state.messages.length) document.getElementById('emptyState').style.display = 'block';
     updateUnreadCount();
   }, 220);
-  // TODO(author): wire up DELETE /api/messages — delete by id, scoped to the
-  // logged-in professor (AND user_id = ...), mirroring the time_slots delete.
-  //   fetch('/api/messages', {
-  //     method: 'DELETE',
-  //     headers: { 'Content-Type': 'application/json' },
-  //     body: JSON.stringify({ id })
-  //   });
+  try {
+    fetch('/api/messages', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+  } catch (e) {
+    console.log(e)
+  }
 }
 
 // ── Unread counter ──
