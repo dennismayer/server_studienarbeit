@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nachrichten – Professorenportal</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #f5f2ee;
+    --surface:   #ffffff;
+    --accent:    #2b5cad;
+    --accent2:   #d4691e;
+    --text:      #1a1a2e;
+    --muted:     #7a7a8c;
+    --border:    #e0dbd4;
+    --slot:      #dde9f7;
+    --slot-text: #1e3a6e;
+    --repeat:    #fdecd8;
+    --repeat-text:#7a3010;
+    --shadow:    0 8px 40px rgba(43,92,173,.13);
+    --radius:    14px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+
+  /* ── Header ── */
+  .header {
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    line-height: 1.1;
+    color: var(--text);
+    margin-right: auto;
+  }
+  .header-title span { color: var(--accent); font-style: italic; }
+  .header-sub { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+
+  .app-layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    padding-left: 260px;
+  }
+  .sidebar {
+    position: fixed;
+    left: 16px;
+    top: 32px;
+    width: 220px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .sidebar-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sidebar-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+  .sidebar-item {
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: .95rem;
+    font-family: inherit;
+    text-decoration: none;
+    display: block;
+    transition: background .2s, color .2s;
+  }
+  .sidebar-item:hover {
+    background: var(--slot);
+  }
+  .sidebar-item.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .logout-top {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 200;
+  }
+  .logout-form {
+    margin: 0;
+  }
+  .logout-btn {
+    padding: 10px 16px;
+    background: var(--accent2);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: .9rem;
+    transition: background .2s;
+  }
+  .logout-btn:hover {
+    background: #be5b1d;
+  }
+
+  /* ── Unread summary (mirrors the calendar's month-nav placement) ── */
+  .unread-summary {
+    display: flex;
+    align-items: center;
+    margin-top: 50px;
+  }
+  .count-badge {
+    font-size: .85rem;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 16px;
+    white-space: nowrap;
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  .count-badge.has-unread {
+    color: #fff;
+    background: var(--accent2);
+    border-color: var(--accent2);
+  }
+
+  /* ── Message list ── */
+  .msg-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .msg-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-left-color: transparent;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+    transition: box-shadow .2s, opacity .2s, transform .2s;
+  }
+  .msg-card.unread {
+    border-left-color: var(--accent);
+    background: #f5f9fe;
+  }
+  .msg-card.removing {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  .msg-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .msg-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .msg-sender {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .unread-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--accent2);
+    flex-shrink: 0;
+    display: none;
+  }
+  .msg-card.unread .unread-dot { display: inline-block; }
+  .msg-time {
+    font-size: .8rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .msg-body {
+    margin-top: 6px;
+    font-size: .9rem;
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  /* ── Custom audio player ── */
+  .player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .play-btn {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .2s, transform .1s;
+  }
+  .play-btn:hover { background: #1e4a99; }
+  .play-btn:active { transform: scale(.94); }
+  .play-btn svg { width: 18px; height: 18px; fill: currentColor; }
+  .progress {
+    flex: 1;
+    height: 8px;
+    background: var(--slot);
+    border-radius: 6px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 6px;
+    transition: width .08s linear;
+  }
+  .time {
+    font-size: .78rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 78px;
+    text-align: right;
+  }
+  .play-btn:disabled { cursor: default; }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Player error / retry ── */
+  .player-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: .8rem;
+    color: #c0392b;
+  }
+  .player-error[hidden] { display: none; }
+  .player-error-text { min-width: 0; }
+  .player-retry {
+    flex-shrink: 0;
+    border: 1.5px solid #f3c2bd;
+    background: #fce8e6;
+    color: #c0392b;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: .78rem;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .player-retry:hover { background: #f9d9d5; }
+
+  /* ── Delete button (matches the calendar's slot-row delete) ── */
+  .msg-delete {
+    width: 32px; height: 32px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: #c0bab2;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color .2s, background .2s, border-color .2s;
+  }
+  .msg-delete svg { width: 15px; height: 15px; fill: currentColor; }
+  .msg-delete:hover {
+    color: #c0392b;
+    background: #fce8e6;
+    border-color: #f3c2bd;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: none;
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 64px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty-state .empty-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.3rem;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  @media (max-width: 860px) {
+    .app-layout {
+      padding-left: 0;
+    }
+    .sidebar {
+      position: static;
+      width: 100%;
+      top: auto;
+      bottom: auto;
+      left: auto;
+      margin-bottom: 20px;
+    }
+    .logout-top {
+      position: static;
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+      right: auto;
+      top: auto;
+    }
+    .unread-summary { margin-top: 0; }
+    .header { justify-content: space-between; }
+  }
+  @media (max-width: 520px) {
+    .msg-head { flex-wrap: wrap; }
+    .time { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── App layout ── -->
+<div class="app-layout">
+  <form action="/logout?_method=DELETE" method="post" class="logout-form logout-top">
+    <button type="submit" class="logout-btn">Abmelden</button>
+  </form>
+  <aside class="sidebar">
+    <div class="sidebar-panel">
+      <div class="sidebar-title">Portal</div>
+      <a class="sidebar-item" href="/">Kalender</a>
+      <a class="sidebar-item active" href="/nachrichten">Nachrichten</a>
+      <button class="sidebar-item" type="button">Benutzerinformationen</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <!-- ── Header ── -->
+    <div class="header">
+      <div>
+        <div class="header-title">Nachrichten</div>
+        <div class="header-sub">Professorenportal · Posteingang</div>
+      </div>
+      <div class="unread-summary">
+        <div class="count-badge" id="unreadCount">–</div>
+      </div>
+    </div>
+
+    <!-- ── Empty state ── -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-title">Keine Nachrichten vorhanden</div>
+      <div>Sobald ein Student eine Sprachnachricht hinterlässt, erscheint sie hier.</div>
+    </div>
+
+    <!-- ── Message list ── -->
+    <div class="msg-list" id="msgList"></div>
+  </div>
+</div>
+
+<script>
+// ── SVG icons ──
+const ICON_PLAY  = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm4 2v8h1v-8h-1zm3 0v8h1v-8h-1z"/></svg>';
+const ICON_SPINNER = '<span class="spinner" aria-hidden="true"></span>';
+
+// ── Helpers ──
+function pad2(n){ return String(n).padStart(2, '0'); }
+function fmtTime(sec){
+  sec = Math.max(0, Math.floor(sec || 0));
+  return Math.floor(sec / 60) + ':' + pad2(sec % 60);
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+function relTime(iso){
+  const then = new Date(iso);
+  const s = Math.floor((Date.now() - then.getTime()) / 1000);
+  if(s < 60)       return 'gerade eben';
+  const m = Math.floor(s / 60);
+  if(m < 60)       return 'vor ' + m + ' Min.';
+  const h = Math.floor(m / 60);
+  if(h < 24)       return 'vor ' + h + ' Std.';
+  const d = Math.floor(h / 24);
+  if(d < 7)        return 'vor ' + d + (d === 1 ? ' Tag' : ' Tagen');
+  return then.toLocaleDateString('de-DE', { day:'numeric', month:'long', year:'numeric' });
+}
+
+async function loadMessages(){
+  try {
+    const res = await fetch('/api/messages')
+    if(res.status === 204) return [];
+    if(!res.ok) throw new Error('Fehler beim Laden der Nachrichten');
+    return await res.json();
+  } catch (e) {
+    console.log(e)
+    return []
+  }
+}
+
+async function getAudioUrl(id){
+  try {
+    const res = await fetch('/api/messages/' + id + '/audio-url');
+    if(!res.ok) throw new Error('Audio-URL konnte nicht geladen werden');
+    const data = await res.json();
+    return data.url;
+  } catch (e) {
+    console.log(e)
+    return ''
+  }
+}
+
+// ── State ──
+const state = { messages: [] };
+let activePlayer = null; // { audio, stop, card }
+
+// ── Render ──
+async function init(){
+  state.messages = await loadMessages();
+  render();
+}
+
+function render(){
+  const list  = document.getElementById('msgList');
+  const empty = document.getElementById('emptyState');
+  list.innerHTML = '';
+  updateUnreadCount();
+
+  if(!state.messages.length){
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  state.messages.forEach(m => list.appendChild(buildCard(m)));
+}
+
+function buildCard(m){
+  const card = document.createElement('article');
+  card.className = 'msg-card' + (m.is_read ? '' : ' unread');
+  card.dataset.id = m.id;
+
+  const exact = new Date(m.created_at).toLocaleString('de-DE');
+  card.innerHTML =
+    '<div class="msg-main">' +
+      '<div class="msg-head">' +
+        '<div class="msg-sender"><span class="unread-dot"></span>' + escapeHtml(m.sender_name) + '</div>' +
+        '<div class="msg-time" title="' + escapeHtml(exact) + '">' + escapeHtml(relTime(m.created_at)) + '</div>' +
+      '</div>' +
+      '<div class="msg-body">' + escapeHtml(m.body || '') + '</div>' +
+      '<div class="player">' +
+        '<button class="play-btn" type="button" aria-label="Sprachnachricht abspielen">' + ICON_PLAY + '</button>' +
+        '<div class="progress" role="slider" aria-label="Wiedergabefortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill"></div></div>' +
+        '<div class="time">0:00 / ' + fmtTime(m.audio_duration_s || 0) + '</div>' +
+      '</div>' +
+      '<div class="player-error" hidden role="alert">' +
+        '<span class="player-error-text"></span>' +
+        '<button class="player-retry" type="button">Erneut versuchen</button>' +
+      '</div>' +
+    '</div>' +
+    '<button class="msg-delete" type="button" title="Nachricht löschen" aria-label="Nachricht löschen">' + ICON_TRASH + '</button>';
+
+  wirePlayer(card, m);
+  card.querySelector('.msg-delete').addEventListener('click', () => deleteMessage(m.id, card));
+  return card;
+}
+
+function wirePlayer(card, m){
+  const playBtn   = card.querySelector('.play-btn');
+  const track     = card.querySelector('.progress');
+  const fill      = card.querySelector('.progress-fill');
+  const timeLabel = card.querySelector('.time');
+  const errorBox  = card.querySelector('.player-error');
+  const errorText = card.querySelector('.player-error-text');
+  const retryBtn  = card.querySelector('.player-retry');
+  let audio = null;
+  let loading = false;
+
+  const setIcon = playing => { playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY; };
+  const totalOf = () => (audio && isFinite(audio.duration) ? audio.duration : (m.audio_duration_s || 0));
+
+  function updateUi(){
+    const total = totalOf();
+    const cur = audio ? audio.currentTime : 0;
+    const ratio = total ? cur / total : 0;
+    fill.style.width = (ratio * 100) + '%';
+    track.setAttribute('aria-valuenow', Math.round(ratio * 100));
+    timeLabel.textContent = fmtTime(cur) + ' / ' + fmtTime(total);
+  }
+
+  function showError(msg){ errorText.textContent = msg; errorBox.hidden = false; }
+  function clearError(){ errorBox.hidden = true; }
+
+  function setLoading(on){
+    loading = on;
+    playBtn.disabled = on;
+    if(on) playBtn.innerHTML = ICON_SPINNER;
+  }
+
+  function ensureAudio(){
+    if(audio) return audio;
+    audio = new Audio();
+    audio.preload = 'none';
+    audio.addEventListener('loadedmetadata', updateUi);
+    audio.addEventListener('timeupdate', updateUi);
+    audio.addEventListener('ended', () => {
+      setIcon(false);
+      audio.currentTime = 0;
+      updateUi();
+      if(activePlayer && activePlayer.audio === audio) activePlayer = null;
+    });
+    // Fires when the media resource fails to load — e.g. an expired presigned
+    // URL returns 403, or the connection drops mid-load.
+    audio.addEventListener('error', () => {
+      if(loading) return; // a src swap is in flight; the play() path reports it
+      setIcon(false);
+      if(activePlayer && activePlayer.audio === audio) activePlayer = null;
+      showError('Sprachnachricht konnte nicht abgespielt werden.');
+    });
+    return audio;
+  }
+
+  function stop(){ if(audio) audio.pause(); setIcon(false); }
+
+  async function startPlayback(){
+    if(loading) return;
+    ensureAudio();
+    clearError();
+
+    // Resume in place if we already have a valid, partly-played source.
+    const canResume = audio.src && !audio.error &&
+                      audio.currentTime > 0 &&
+                      (!isFinite(audio.duration) || audio.currentTime < audio.duration);
+
+    if(!canResume){
+      setLoading(true);
+      let url;
+      try {
+        url = await getAudioUrl(m.id);            // fresh presigned URL, just-in-time
+      } catch (e){
+        setLoading(false);
+        setIcon(false);
+        showError('Sprachnachricht konnte nicht geladen werden.');
+        return;
+      }
+      // Release a previous mock blob URL (no-op for real https URLs).
+      if(audio.src && audio.src.indexOf('blob:') === 0) URL.revokeObjectURL(audio.src);
+      audio.src = url;
+      audio.currentTime = 0;
+    }
+
+    if(activePlayer && activePlayer.audio !== audio) activePlayer.stop();
+
+    try {
+      await audio.play();
+      setLoading(false);
+      setIcon(true);
+      activePlayer = { audio, stop, card };
+      if(!m.is_read) markRead(m.id, card);
+    } catch (e){
+      setLoading(false);
+      setIcon(false);
+      showError('Sprachnachricht konnte nicht abgespielt werden.');
+    }
+  }
+
+  playBtn.addEventListener('click', () => {
+    if(loading) return;
+    if(audio && audio.src && !audio.paused){
+      audio.pause();
+      setIcon(false);
+      return;
+    }
+    startPlayback();
+  });
+
+  retryBtn.addEventListener('click', () => { clearError(); startPlayback(); });
+
+  track.addEventListener('click', e => {
+    if(!audio || !audio.src || audio.error) return; // seek only once a source is loaded
+    const total = totalOf();
+    if(!total) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * total;
+    updateUi();
+  });
+}
+
+// ── Mark read ──
+function markRead(id, card){
+  const m = state.messages.find(x => x.id === id);
+  if(!m || m.is_read) return;
+  m.is_read = true;
+  card.classList.remove('unread');
+  updateUnreadCount();
+  try {
+    fetch('/api/messages/' + id + '/read', { method: 'POST' });
+  } catch (e) {
+    console.log(e)
+  }
+}
+
+// ── Delete ──
+function deleteMessage(id, card){
+  if(activePlayer && activePlayer.card === card){
+    activePlayer.stop();
+    activePlayer = null;
+  }
+  card.classList.add('removing');
+  setTimeout(() => {
+    state.messages = state.messages.filter(x => x.id !== id);
+    card.remove();
+    if(!state.messages.length) document.getElementById('emptyState').style.display = 'block';
+    updateUnreadCount();
+  }, 220);
+  try {
+    fetch('/api/messages', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+  } catch (e) {
+    console.log(e)
+  }
+}
+
+// ── Unread counter ──
+function updateUnreadCount(){
+  const n = state.messages.filter(m => !m.is_read).length;
+  const el = document.getElementById('unreadCount');
+  el.textContent = n === 0 ? 'Alle gelesen' : (n + ' ungelesen');
+  el.classList.toggle('has-unread', n > 0);
+}
+
+// ── Init ──
+init();
+</script>
+</body>
+</html>

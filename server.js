@@ -1,17 +1,36 @@
+import dotenv from 'dotenv'
+
 // checks if we are in production, if not load the .env file
 if(process.env.NODE_ENV !== 'production') {
-    require('dotenv').config()
+    dotenv.config()
 }
 
 // import necessary modules
-const express = require('express')
-const {Pool} = require('pg')
-const bcrypt = require('bcrypt')
-const passport = require('passport')
-const flash = require('express-flash')
-const session = require('express-session')
-const methodOverride = require('method-override')
-const path = require('path')
+import express from 'express'
+import { Pool } from 'pg'
+import bcrypt from 'bcrypt'
+import passport from 'passport'
+import flash from 'express-flash'
+import session from 'express-session'
+import methodOverride from 'method-override'
+import path from 'path'
+import { v4 as uuidv4 } from 'uuid'
+
+// import AWS s3 client
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { fromIni } from "@aws-sdk/credential-provider-ini";
+
+// create dirname path
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // create express app -> base for server
 const app = express()
@@ -30,8 +49,22 @@ pool.connect()
     .then(() => console.log('Connected to PostgreSQL'))
     .catch(err => console.error('PostgreSQL connection error', err))
 
+// start s3Client
+var s3Client;
+if(process.env.NODE_ENV !== 'production') {
+    s3Client = new S3Client({
+        credentials: fromIni({ profile: "s3_access" }),
+        requestChecksumCalculation: 'WHEN_REQUIRED'
+    });
+} else {
+    s3Client = new S3Client({
+        region: process.env.AWS_REGION,
+        requestChecksumCalculation: 'WHEN_REQUIRED'
+    });
+}
+
 // get passport init function from seperate .js file
-const initializePassport = require('./passwort-config')
+import initializePassport from './passwort-config.js'
 
 // initialize passport include functions for retrieving user by email and id from database
 initializePassport(
@@ -70,6 +103,11 @@ app.use(express.static(path.join(__dirname, 'public')))
 // load index page if authenticated, otherwise redirect to login page
 app.get('/', checkAuthenticated, (req, res) => {
     res.render('index.ejs', { name:req.user.surname })
+})
+
+// load messages page if authenticated, otherwise redirect to login page
+app.get('/nachrichten', checkAuthenticated, (req, res) => {
+    res.render('nachrichten.ejs')
 })
 
 // load login page if not authenticated, otherwise redirect to index page
@@ -261,6 +299,202 @@ app.get('/api/slot_data/get_next_timeslot', async (req, res) => {
         res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching next time slot'}))
     }
 })
+
+//=========================================================================================
+// API end points for audio messages via s3
+//=========================================================================================
+// in -> user_id, sender_name, body, audio_duration_s, need audio?
+app.post('/api/messages', async (req, res) => {
+    try {
+        const user_id = req.body.user_id
+        const sender_name = req.body.sender_name
+        const message = req.body.message
+        const audio_duration_s = req.body.audio_duration_s
+        var audio_key = ""
+        var upload_url = ""
+
+        // url Generieriung
+        if(req.body.send_file) {
+            audio_key = uuidv4()
+            upload_url = await getSignedUrl(s3Client, new PutObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: audio_key,
+                ContentType: 'audio/wav'
+            }), { expiresIn: 15 * 60 })
+        }
+
+        // Anlegen des Eintrages
+        await pool.query(
+            `INSERT INTO messages(user_id, sender_name, body, audio_key, audio_duration_s)
+            VALUES ($1, $2, $3, $4, $5)`,
+            [user_id, sender_name, message, audio_key, audio_duration_s]
+        )
+
+        if(req.body.send_file) {
+            res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: upload_url}))
+        } else {
+            res.sendStatus(200)
+        }
+
+    } catch (error) {
+        console.log(error)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while trying to reach S3 or pg'}))
+    }
+})
+
+app.get('/api/messages', checkAuthenticated, async (req, res) => {
+    try {
+        // load data
+        const result = await pool.query(
+            `SELECT id, sender_name, body, audio_duration_s, is_read, created_at
+             FROM messages
+             WHERE $1
+             ORDER BY created_at DESC`,
+            [req.user.user_id]
+        )
+        
+        // if there are results, send them as JSON, otherwise send a 204 No Content status
+        if(result.rows.length > 0) {
+            res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(result.rows))
+        } else {
+            res.sendStatus(204)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+    }
+})
+
+app.get('/api/messages/:id/audio-url', checkAuthenticated, async (req, res) => {
+    const user_id = req.user.user_id
+    const id = req.params.id
+
+    try {
+        // get key from database
+        const result = await pool.query(
+            `SELECT audio_key
+             FROM messages
+             WHERE user_id = $1 AND id = $2`,
+            [user_id, id]
+        )
+
+        // check if a result turned up
+        if(result.rows.length > 0) {
+            // object was found. Save result
+            var audio_key = result.rows[0].audio_key
+        } else {
+            // object was not found in database
+            res.sendStatus(404)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+        return
+    }
+
+    try {
+        const file_url = await getSignedUrl(s3Client, new GetObjectCommand({
+            Bucket: process.env.BUCKET_NAME,
+            Key: audio_key,
+            ContentType: 'audio/wav'
+        }), { expiresIn: 1 * 60 })
+
+        res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: file_url}))
+
+    } catch (e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(404).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error Object not found'}))
+    }
+})
+
+app.post('/api/messages/:id/read', checkAuthenticated, async (req, res) => {
+    const user_id = req.user.user_id
+    const id = req.params.id
+
+    try {
+        const response = await pool.query(
+            `UPDATE messages
+             SET is_read=true
+             WHERE user_id = $1 AND id = $2`,
+             [user_id, id]
+        )
+
+        res.sendStatus(200)
+    } catch (e) {
+        // if there is an error while updating data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(404).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating data'}))
+    }
+})
+
+app.delete('/api/messages', checkAuthenticated, async (req, res) => {
+    const id = req.body.id
+    const user_id = req.user.user_id
+
+    try {
+        // get key from database
+        const result = await pool.query(
+            `SELECT audio_key
+             FROM messages
+             WHERE user_id = $1 AND id = $2`,
+            [user_id, id]
+        )
+
+        // check if a result turned up
+        if(result.rows.length > 0) {
+            // object was found. Save result
+            var audio_key = result.rows[0].audio_key
+        } else {
+            // object was not found in database
+            res.sendStatus(404)
+        }
+    } catch(e) {
+        // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching data'}))
+        return
+    }
+
+    if(audio_key != '') {
+        try {
+            const response = await s3Client.send(new DeleteObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: audio_key
+            }))
+
+            if(response.status == 403) {
+                console.log('Object had no bucket entry')
+            }
+
+            console.log(response)
+        } catch (e) {
+            // if there is an error while deleting data, log the error and send a 400 Bad Request status with an appropriate message
+            console.error(e)
+            res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while deleting S3 object'}))
+            return
+        }
+    }
+
+    try {
+        const response = await pool.query(
+            `DELETE FROM messages
+             WHERE user_id = $1 AND id=$2`,
+             [user_id, id]
+        )
+        console.log(response)
+
+        res.sendStatus(200)
+    } catch (e) {
+        // if there is an error while deleting data, log the error and send a 400 Bad Request status with an appropriate message
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while deleting database entry'}))
+        return
+    }
+})
+//=========================================================================================
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {

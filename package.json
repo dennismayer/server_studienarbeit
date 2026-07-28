@@ -9,7 +9,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1095.0",
+    "@aws-sdk/s3-request-presigner": "^3.1095.0",
     "bcrypt": "^6.0.0",
     "ejs": "^5.0.2",
     "express": "^5.2.1",
@@ -18,7 +21,8 @@
     "method-override": "^3.0.0",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
-    "pg": "^8.21.0"
+    "pg": "^8.21.0",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
