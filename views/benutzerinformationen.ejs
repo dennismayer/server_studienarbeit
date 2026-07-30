@@ -327,5 +327,63 @@
   </div>
 </div>
 
+<script>
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const firstnameEl = document.getElementById('firstname');
+  const surnameEl = document.getElementById('surname');
+  const newPasswordEl = document.getElementById('newPassword');
+  const repeatPasswordEl = document.getElementById('repeatPassword');
+  const nameError = document.getElementById('nameError');
+  const passwordError = document.getElementById('passwordError');
+  const status = document.getElementById('saveStatus');
+  const btn = document.getElementById('saveBtn');
+
+  nameError.classList.remove('visible');
+  passwordError.classList.remove('visible');
+  status.classList.remove('success', 'error');
+  status.style.display = 'none';
+
+  const firstname = firstnameEl.value.trim();
+  const surname = surnameEl.value.trim();
+  const newPassword = newPasswordEl.value;
+  const repeatPassword = repeatPasswordEl.value;
+
+  let hasError = false;
+
+  if (!firstname || !surname) {
+    nameError.classList.add('visible');
+    hasError = true;
+  }
+
+  const wantsPasswordChange = newPassword.length > 0 || repeatPassword.length > 0;
+  if (wantsPasswordChange && newPassword !== repeatPassword) {
+    passwordError.classList.add('visible');
+    hasError = true;
+  }
+
+  if (hasError) return;
+
+  const payload = { firstname, surname };
+  if (wantsPasswordChange) payload.password = newPassword;
+
+  btn.disabled = true;
+  btn.textContent = 'Speichern …';
+
+  // TODO(author): wire up PUT /api/user_info with `payload` (shape: { firstname, surname, password? } —
+  // password is only present when the professor filled in both password fields).
+  // Replace this simulated delay with the real fetch call and handle its response/error
+  // (e.g. show status.classList.add('error') with an appropriate message on failure).
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  btn.disabled = false;
+  btn.textContent = 'Änderungen speichern';
+  status.textContent = 'Änderungen gespeichert.';
+  status.classList.add('success');
+
+  newPasswordEl.value = '';
+  repeatPasswordEl.value = '';
+});
+</script>
+
 </body>
 </html>
