@@ -363,7 +363,7 @@ app.get('/api/messages', checkAuthenticated, async (req, res) => {
         const result = await pool.query(
             `SELECT id, sender_name, body, audio_duration_s, is_read, created_at
              FROM messages
-             WHERE $1
+             WHERE user_id = $1
              ORDER BY created_at DESC`,
             [req.user.user_id]
         )
