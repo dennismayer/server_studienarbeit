@@ -12,6 +12,7 @@ import bcrypt from 'bcrypt'
 import passport from 'passport'
 import flash from 'express-flash'
 import session from 'express-session'
+import connectPgSimple from 'connect-pg-simple'
 import methodOverride from 'method-override'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
@@ -90,7 +91,12 @@ app.set('view-engine', 'ejs')
 app.use(express.urlencoded({ extended: false }))
 app.use(express.json())
 app.use(flash())
+const PgSession = connectPgSimple(session)
 app.use(session({
+    store: new PgSession({
+        pool,
+        createTableIfMissing: true
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false
