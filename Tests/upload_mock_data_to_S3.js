@@ -1,6 +1,6 @@
 import fs from "fs";
 
-const SERVER_URL = "http://127.0.0.1:8080";
+const SERVER_URL = "https://ostfalia-professorenhub.com";
 const wave = fs.readFileSync(new URL("./file_example_WAV_1MG.wav", import.meta.url));
 
 const mockMessages = [
