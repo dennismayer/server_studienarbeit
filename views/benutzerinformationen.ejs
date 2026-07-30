@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benutzerinformationen – Professorenportal</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #f5f2ee;
+    --surface:   #ffffff;
+    --accent:    #2b5cad;
+    --accent2:   #d4691e;
+    --text:      #1a1a2e;
+    --muted:     #7a7a8c;
+    --border:    #e0dbd4;
+    --slot:      #dde9f7;
+    --slot-text: #1e3a6e;
+    --repeat:    #fdecd8;
+    --repeat-text:#7a3010;
+    --shadow:    0 8px 40px rgba(43,92,173,.13);
+    --radius:    14px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+
+  /* ── Header ── */
+  .header {
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    line-height: 1.1;
+    color: var(--text);
+    margin-right: auto;
+  }
+  .header-sub { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+
+  .app-layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    padding-left: 260px;
+  }
+  .sidebar {
+    position: fixed;
+    left: 16px;
+    top: 32px;
+    width: 220px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .sidebar-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sidebar-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+  .sidebar-item {
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: .95rem;
+    font-family: inherit;
+    text-decoration: none;
+    display: block;
+    transition: background .2s, color .2s;
+  }
+  .sidebar-item:hover { background: var(--slot); }
+  .sidebar-item.active { background: var(--accent); color: #fff; }
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .logout-top {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 200;
+  }
+  .logout-form { margin: 0; }
+  .logout-btn {
+    padding: 10px 16px;
+    background: var(--accent2);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: .9rem;
+    transition: background .2s;
+  }
+  .logout-btn:hover { background: #be5b1d; }
+
+  /* ── Profile card ── */
+  .profile-card {
+    max-width: 1080px;
+    width: 100%;
+    margin: 50px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 28px 28px 32px;
+  }
+  .info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg);
+    border-radius: 10px;
+    margin-bottom: 20px;
+  }
+  .info-row .info-label {
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .info-row .info-value {
+    font-size: .9rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .section-heading {
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 24px 0 14px;
+  }
+  .section-heading:first-of-type { margin-top: 0; }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1/-1; }
+  .form-group label { font-size: .78rem; font-weight: 500; color: var(--muted); }
+  .form-group input {
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 9px;
+    font-family: inherit;
+    font-size: .875rem;
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color .2s;
+    outline: none;
+  }
+  .form-group input:focus { border-color: var(--accent); background: #fff; }
+  .form-hint {
+    font-size: .75rem;
+    color: var(--muted);
+    grid-column: 1/-1;
+    margin-top: -4px;
+  }
+
+  .field-error {
+    font-size: .78rem;
+    color: #c0392b;
+    grid-column: 1/-1;
+    display: none;
+  }
+  .field-error.visible { display: block; }
+
+  .submit-btn {
+    width: 100%;
+    margin-top: 20px;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  .submit-btn:hover { background: #1e4a99; }
+  .submit-btn:active { transform: scale(.98); }
+  .submit-btn:disabled { opacity: .7; cursor: default; }
+
+  .save-status {
+    margin-top: 14px;
+    font-size: .85rem;
+    padding: 10px 14px;
+    border-radius: 10px;
+    display: none;
+  }
+  .save-status.success { display: block; background: #e8f3e8; color: #2c6b2f; }
+  .save-status.error { display: block; background: #fce8e6; color: #c0392b; }
+
+  @media (max-width: 860px) {
+    .app-layout { padding-left: 0; }
+    .sidebar {
+      position: static;
+      width: 100%;
+      top: auto;
+      bottom: auto;
+      left: auto;
+      margin-bottom: 20px;
+    }
+    .logout-top {
+      position: static;
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+      right: auto;
+      top: auto;
+    }
+    .header { justify-content: space-between; }
+    .profile-card { margin-top: 0; }
+  }
+  @media (max-width: 520px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: 1; }
+    .info-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── App layout ── -->
+<div class="app-layout">
+  <form action="/logout?_method=DELETE" method="post" class="logout-form logout-top">
+    <button type="submit" class="logout-btn">Abmelden</button>
+  </form>
+  <aside class="sidebar">
+    <div class="sidebar-panel">
+      <div class="sidebar-title">Portal</div>
+      <a class="sidebar-item" href="/">Kalender</a>
+      <a class="sidebar-item" href="/nachrichten">Nachrichten</a>
+      <a class="sidebar-item active" href="/benutzerinformationen">Benutzerinformationen</a>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <!-- ── Header ── -->
+    <div class="header">
+      <div>
+        <div class="header-title">Benutzerinformationen</div>
+        <div class="header-sub">Professorenportal · Kontoeinstellungen</div>
+      </div>
+    </div>
+
+    <!-- ── Profile card ── -->
+    <div class="profile-card">
+      <div class="info-row">
+        <span class="info-label">E-Mail-Adresse</span>
+        <span class="info-value"><%= email %></span>
+      </div>
+
+      <div class="section-heading">Persönliche Daten</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="firstname">Vorname</label>
+          <input type="text" id="firstname" value="<%= firstname %>">
+        </div>
+        <div class="form-group">
+          <label for="surname">Nachname</label>
+          <input type="text" id="surname" value="<%= surname %>">
+        </div>
+        <div class="field-error" id="nameError">Vorname und Nachname dürfen nicht leer sein.</div>
+      </div>
+
+      <div class="section-heading">Passwort ändern</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="newPassword">Neues Passwort</label>
+          <input type="password" id="newPassword" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="repeatPassword">Passwort wiederholen</label>
+          <input type="password" id="repeatPassword" autocomplete="new-password">
+        </div>
+        <div class="form-hint">Leer lassen, um das Passwort nicht zu ändern.</div>
+        <div class="field-error" id="passwordError">Die eingegebenen Passwörter stimmen nicht überein.</div>
+      </div>
+
+      <button class="submit-btn" id="saveBtn" type="button">Änderungen speichern</button>
+      <div class="save-status" id="saveStatus"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

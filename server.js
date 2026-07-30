@@ -116,6 +116,15 @@ app.get('/nachrichten', checkAuthenticated, (req, res) => {
     res.render('nachrichten.ejs')
 })
 
+// load user info page if authenticated, otherwise redirect to login page
+app.get('/benutzerinformationen', checkAuthenticated, (req, res) => {
+    res.render('benutzerinformationen.ejs', {
+        firstname: req.user.firstname,
+        surname: req.user.surname,
+        email: req.user.email
+    })
+})
+
 // load login page if not authenticated, otherwise redirect to index page
 app.get('/login', checkNotAthenticated, (req, res) => {
     res.render('login.ejs')
