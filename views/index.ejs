@@ -196,6 +196,7 @@
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: 120px;
     gap: 1px;
     background: var(--border);
     padding: 1px;
@@ -203,7 +204,9 @@
 
   .cal-cell {
     background: var(--surface);
-    min-height: 90px;
+    height: 120px;
+    min-width: 0;
+    overflow: hidden;
     padding: 8px 6px 6px;
     cursor: pointer;
     transition: background .15s;
@@ -236,12 +239,10 @@
     border-radius: 5px;
     padding: 2px 5px;
     margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 3px;
+    overflow: hidden;
   }
   .slot-pill.repeat {
     background: var(--repeat);
@@ -252,6 +253,16 @@
     border-radius: 50%;
     background: currentColor;
     flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .slot-pill-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    line-height: 1.3;
   }
   .more-slots {
     font-size: .65rem;
@@ -660,6 +671,11 @@ const MONTHS_DE   = ['Januar','Februar','März','April','Mai','Juni','Juli','Aug
 function pad(n){ return String(n).padStart(2,'0'); }
 function dateKey(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
 function parseKey(k){ const [y,m,d]=k.split('-').map(Number); return {y,m:m-1,d}; }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
 
 function slotsForDate(key){
   const direct = state.slots[key] || [];
@@ -809,7 +825,7 @@ function makeCell(y, m, d, other, isToday){
   slots.slice(0, MAX_SHOW).forEach(s=>{
     const pill = document.createElement('div');
     pill.className = 'slot-pill' + (s.repeat?' repeat':'');
-    pill.innerHTML = `<span class="dot"></span>${s.from}–${s.to}${s.title?' · '+s.title:''}`;
+    pill.innerHTML = `<span class="dot"></span><span class="slot-pill-text">${s.from}–${s.to}${s.title?' · '+escapeHtml(s.title):''}</span>`;
     el.appendChild(pill);
   });
   if(slots.length > MAX_SHOW){
@@ -859,7 +875,7 @@ function renderSlotList(key){
     row.className='slot-row';
     row.innerHTML=`
       <div class="time-badge">${s.from} – ${s.to}</div>
-      <div class="slot-title-text">${s.title||'Sprechstunde'}${s.room?' <span style="color:var(--muted);font-size:.78rem">· '+s.room+'</span>':''}</div>
+      <div class="slot-title-text">${s.title?escapeHtml(s.title):'Sprechstunde'}${s.room?' <span style="color:var(--muted);font-size:.78rem">· '+escapeHtml(s.room)+'</span>':''}</div>
       ${s.repeat?'<div class="repeat-badge">↻ wöchentl.</div>':''}
       ${`<button class="delete-slot" title="Löschen" data-key="${s._srcKey||key}" data-id="${s.id}">✕</button>`}
     `;

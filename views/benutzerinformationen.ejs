@@ -391,7 +391,14 @@ document.getElementById('profileForm').addEventListener('submit', async (event) 
     if(res.ok && res.status == 200) {
       status.textContent = 'Änderungen gespeichert.';
       status.classList.add('success');
+    } else if(res.status == 204) {
+      status.textContent = 'Keine Änderungen vorhanden.';
+      status.classList.add('success');
+    } else {
+      status.textContent = 'Fehler beim Speichern der Änderungen.';
+      status.classList.add('error');
     }
+    
   } catch (e) {
     status.textContent = 'Fehler beim Speichern der Änderungen.';
     status.classList.add('error');
