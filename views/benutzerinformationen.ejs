@@ -379,12 +379,27 @@ document.getElementById('profileForm').addEventListener('submit', async (event) 
   // password is only present when the professor filled in both password fields).
   // Replace this simulated delay with the real fetch call and handle its response/error
   // (e.g. show status.classList.add('error') with an appropriate message on failure).
-  await new Promise(resolve => setTimeout(resolve, 500));
+  try {
+    const res = await fetch('/api/update_user_info', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
 
+    if(res.ok && res.status == 200) {
+      status.textContent = 'Änderungen gespeichert.';
+      status.classList.add('success');
+    }
+  } catch (e) {
+    status.textContent = 'Fehler beim Speichern der Änderungen.';
+    status.classList.add('error');
+    console.error('Error saving user info:', e);
+  }
+  
   btn.disabled = false;
   btn.textContent = 'Änderungen speichern';
-  status.textContent = 'Änderungen gespeichert.';
-  status.classList.add('success');
 
   newPasswordEl.value = '';
   repeatPasswordEl.value = '';

@@ -510,6 +510,48 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
     }
 })
 //=========================================================================================
+// API end point for update user information
+//=========================================================================================
+app.put('/api/update_user_info', checkAuthenticated, async (req, res) => {
+    const update_calls = []
+
+    if(req.user.firstname !== req.body.firstname) {
+        update_calls.push(`firstname = '${req.body.firstname}'`)
+    }
+
+    if(req.user.surname !== req.body.surname) {
+        update_calls.push(`surname = '${req.body.surname}'`)
+    }
+
+    if(req.body.password && req.body.password.length > 0) {
+        const hashed_password = await bcrypt.hash(req.body.password, 10)
+        update_calls.push(`password = '${hashed_password}'`)
+    }
+
+    const query_input = update_calls.join(', ')
+
+    try {
+        const response = await pool.query(
+            `UPDATE users SET ${query_input} WHERE user_id=$1`,
+            [req.user.user_id]
+        )
+
+        if(response.rowCount === 0) {
+            res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating user information'}))
+            return
+        }
+    } catch (e) {
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating user information'}))
+        return
+    }
+
+    res.sendStatus(200)
+
+})
+
+//=========================================================================================
+
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {
