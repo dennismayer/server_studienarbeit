@@ -116,6 +116,15 @@ app.get('/nachrichten', checkAuthenticated, (req, res) => {
     res.render('nachrichten.ejs')
 })
 
+// load user info page if authenticated, otherwise redirect to login page
+app.get('/benutzerinformationen', checkAuthenticated, (req, res) => {
+    res.render('benutzerinformationen.ejs', {
+        firstname: req.user.firstname,
+        surname: req.user.surname,
+        email: req.user.email
+    })
+})
+
 // load login page if not authenticated, otherwise redirect to index page
 app.get('/login', checkNotAthenticated, (req, res) => {
     res.render('login.ejs')
@@ -185,7 +194,11 @@ app.get('/api/slot_data', checkAuthenticated, async (req, res) => {
         
         // format date and time for frontend
         for (let row of result.rows) {
-            row.date = row.date.toISOString().slice(0, 10)
+            // pg parses a SQL `date` at local midnight, so read it back with the
+            // local-time getters — toISOString() would convert to UTC first and
+            // can shift the date by one depending on the server's UTC offset.
+            const d = row.date
+            row.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
             row.from = row.from.toString().slice(0, 5)
             row.to = row.to.toString().slice(0, 5)
         }
@@ -354,7 +367,7 @@ app.get('/api/messages', checkAuthenticated, async (req, res) => {
         const result = await pool.query(
             `SELECT id, sender_name, body, audio_duration_s, is_read, created_at
              FROM messages
-             WHERE $1
+             WHERE user_id = $1
              ORDER BY created_at DESC`,
             [req.user.user_id]
         )
@@ -501,6 +514,63 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
     }
 })
 //=========================================================================================
+// API end point for update user information
+//=========================================================================================
+app.put('/api/update_user_info', checkAuthenticated, async (req, res) => {
+    const update_calls = []
+    const query_params = []
+    let n = 1
+
+    if(req.user.firstname !== req.body.firstname) {
+        update_calls.push(`firstname = $${n}`)
+        query_params.push(req.body.firstname)
+        n += 1
+    }
+
+    if(req.user.surname !== req.body.surname) {
+        update_calls.push(`surname = $${n}`)
+        query_params.push(req.body.surname)
+        n += 1
+    }
+
+    if(req.body.password && req.body.password.length > 0) {
+        const hashed_password = await bcrypt.hash(req.body.password, 10)
+        update_calls.push(`password = $${n}`)
+        query_params.push(hashed_password)
+        n += 1
+    }
+
+    const query_input = update_calls.join(', ')
+
+    if(query_input.length === 0) {
+        res.status(204).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'No changes to update'}))
+        return
+    }
+
+    query_params.push(req.user.user_id)
+
+    try {
+        const response = await pool.query(
+            `UPDATE users SET ${query_input} WHERE user_id=$${n}`,
+            query_params
+        )
+
+        if(response.rowCount === 0) {
+            res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating user information'}))
+            return
+        }
+    } catch (e) {
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while updating user information'}))
+        return
+    }
+
+    res.sendStatus(200)
+
+})
+
+//=========================================================================================
+
 
 // middleware function to check if the user is authenticated, allowing access to the next middleware or route handler if authenticated, otherwise redirecting to the login page
 function checkAuthenticated(req, res, next) {

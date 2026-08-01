@@ -189,6 +189,9 @@
     border-left-color: var(--accent);
     background: #f5f9fe;
   }
+  .msg-card.clickable {
+    cursor: pointer;
+  }
   .msg-card.removing {
     opacity: 0;
     transform: translateX(14px);
@@ -396,7 +399,7 @@
       <div class="sidebar-title">Portal</div>
       <a class="sidebar-item" href="/">Kalender</a>
       <a class="sidebar-item active" href="/nachrichten">Nachrichten</a>
-      <button class="sidebar-item" type="button">Benutzerinformationen</button>
+      <a class="sidebar-item" href="/benutzerinformationen">Benutzerinformationen</a>
     </div>
   </aside>
 
@@ -503,8 +506,9 @@ function render(){
 }
 
 function buildCard(m){
+  const hasAudio = m.audio_duration_s != null;
   const card = document.createElement('article');
-  card.className = 'msg-card' + (m.is_read ? '' : ' unread');
+  card.className = 'msg-card' + (m.is_read ? '' : ' unread') + (!hasAudio && !m.is_read ? ' clickable' : '');
   card.dataset.id = m.id;
 
   const exact = new Date(m.created_at).toLocaleString('de-DE');
@@ -515,19 +519,30 @@ function buildCard(m){
         '<div class="msg-time" title="' + escapeHtml(exact) + '">' + escapeHtml(relTime(m.created_at)) + '</div>' +
       '</div>' +
       '<div class="msg-body">' + escapeHtml(m.body || '') + '</div>' +
-      '<div class="player">' +
-        '<button class="play-btn" type="button" aria-label="Sprachnachricht abspielen">' + ICON_PLAY + '</button>' +
-        '<div class="progress" role="slider" aria-label="Wiedergabefortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill"></div></div>' +
-        '<div class="time">0:00 / ' + fmtTime(m.audio_duration_s || 0) + '</div>' +
-      '</div>' +
-      '<div class="player-error" hidden role="alert">' +
-        '<span class="player-error-text"></span>' +
-        '<button class="player-retry" type="button">Erneut versuchen</button>' +
-      '</div>' +
+      (hasAudio ?
+        '<div class="player">' +
+          '<button class="play-btn" type="button" aria-label="Sprachnachricht abspielen">' + ICON_PLAY + '</button>' +
+          '<div class="progress" role="slider" aria-label="Wiedergabefortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill"></div></div>' +
+          '<div class="time">0:00 / ' + fmtTime(m.audio_duration_s || 0) + '</div>' +
+        '</div>' +
+        '<div class="player-error" hidden role="alert">' +
+          '<span class="player-error-text"></span>' +
+          '<button class="player-retry" type="button">Erneut versuchen</button>' +
+        '</div>'
+      : '') +
     '</div>' +
     '<button class="msg-delete" type="button" title="Nachricht löschen" aria-label="Nachricht löschen">' + ICON_TRASH + '</button>';
 
-  wirePlayer(card, m);
+  if(hasAudio){
+    wirePlayer(card, m);
+  } else if(!m.is_read){
+    // Text-only messages have no player to trigger markRead from, so a click on
+    // the card itself is the read signal.
+    card.addEventListener('click', e => {
+      if(e.target.closest('.msg-delete')) return;
+      markRead(m.id, card);
+    }, { once: true });
+  }
   card.querySelector('.msg-delete').addEventListener('click', () => deleteMessage(m.id, card));
   return card;
 }
@@ -659,7 +674,7 @@ function markRead(id, card){
   const m = state.messages.find(x => x.id === id);
   if(!m || m.is_read) return;
   m.is_read = true;
-  card.classList.remove('unread');
+  card.classList.remove('unread', 'clickable');
   updateUnreadCount();
   try {
     fetch('/api/messages/' + id + '/read', { method: 'POST' });
