@@ -45,7 +45,7 @@ const pool = new Pool({
 })
 
 // start connection to PostgreSQL server
-pool.connect()
+pool.query('SELECT 1')
     .then(() => console.log('Connected to PostgreSQL'))
     .catch(err => console.error('PostgreSQL connection error', err))
 
@@ -90,7 +90,13 @@ app.set('view-engine', 'ejs')
 app.use(express.urlencoded({ extended: false }))
 app.use(express.json())
 app.use(flash())
+const PgSession = connectPgSimple(session)
+const sessionStore = new PgSession({
+    pool,
+    createTableIfMissing: true
+})
 app.use(session({
+    store: sessionStore,
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false
@@ -531,6 +537,7 @@ async function shutdown(sigName) {
     console.log(`Shutting down server on ${sigName}...`);
     server.close(async () => {
         console.log('Closed out remaining connections');
+        await sessionStore.close();
         await pool.end();
         process.exit(0);
     });
