@@ -685,6 +685,9 @@ function markRead(id, card){
 
 // ── Delete ──
 function deleteMessage(id, card){
+  // ignore repeat clicks while the card is already being removed
+  if(card.classList.contains('removing')) return;
+  card.querySelector('.msg-delete').disabled = true;
   if(activePlayer && activePlayer.card === card){
     activePlayer.stop();
     activePlayer = null;

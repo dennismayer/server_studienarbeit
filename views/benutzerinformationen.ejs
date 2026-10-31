@@ -179,7 +179,8 @@
   .form-group { display: flex; flex-direction: column; gap: 5px; }
   .form-group.full { grid-column: 1/-1; }
   .form-group label { font-size: .78rem; font-weight: 500; color: var(--muted); }
-  .form-group input {
+  .form-group input,
+  .form-group select {
     padding: 9px 12px;
     border: 1.5px solid var(--border);
     border-radius: 9px;
@@ -190,7 +191,8 @@
     transition: border-color .2s;
     outline: none;
   }
-  .form-group input:focus { border-color: var(--accent); background: #fff; }
+  .form-group input:focus,
+  .form-group select:focus { border-color: var(--accent); background: #fff; }
   .form-hint {
     font-size: .75rem;
     color: var(--muted);
@@ -296,7 +298,27 @@
 
       <div class="section-heading">Persönliche Daten</div>
       <form id="profileForm">
+        <% const currentTitle = typeof academic_title !== 'undefined' && academic_title ? academic_title : ''; %>
+        <% const currentRoomId = typeof default_room_id !== 'undefined' && default_room_id != null ? String(default_room_id) : ''; %>
+        <% const roomOptions = typeof rooms !== 'undefined' ? rooms : []; %>
         <div class="form-grid">
+          <div class="form-group">
+            <label for="academicTitle">Titel</label>
+            <select id="academicTitle">
+              <% [['Prof. Dr.', 'Prof. Dr.'], ['Prof.', 'Prof.'], ['Dr.', 'Dr.'], ['', 'Kein Titel']].forEach(function ([value, label]) { %>
+                <option value="<%= value %>"<%= value === currentTitle ? ' selected' : '' %>><%= label %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="defaultRoom">Standardraum</label>
+            <select id="defaultRoom">
+              <option value="">Kein Standardraum</option>
+              <% roomOptions.forEach(function (room) { %>
+                <option value="<%= room.room_id %>"<%= String(room.room_id) === currentRoomId ? ' selected' : '' %>><%= room.room_name %></option>
+              <% }) %>
+            </select>
+          </div>
           <div class="form-group">
             <label for="firstname">Vorname</label>
             <input type="text" id="firstname" value="<%= firstname %>">
@@ -369,16 +391,16 @@ document.getElementById('profileForm').addEventListener('submit', async (event) 
 
   if (hasError) return;
 
-  const payload = { firstname, surname };
+  const academic_title = document.getElementById('academicTitle').value;
+  const defaultRoomValue = document.getElementById('defaultRoom').value;
+  const default_room_id = defaultRoomValue ? Number(defaultRoomValue) : null;
+
+  const payload = { firstname, surname, academic_title, default_room_id };
   if (wantsPasswordChange) payload.password = newPassword;
 
   btn.disabled = true;
   btn.textContent = 'Speichern …';
 
-  // TODO(author): wire up PUT /api/user_info with `payload` (shape: { firstname, surname, password? } —
-  // password is only present when the professor filled in both password fields).
-  // Replace this simulated delay with the real fetch call and handle its response/error
-  // (e.g. show status.classList.add('error') with an appropriate message on failure).
   try {
     const res = await fetch('/api/update_user_info', {
       method: 'PUT',

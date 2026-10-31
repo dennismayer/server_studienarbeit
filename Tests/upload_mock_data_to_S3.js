@@ -1,6 +1,15 @@
 import fs from "fs";
 
-const SERVER_URL = "https://ostfalia-professorenhub.com";
+import dotenv from 'dotenv'
+
+// checks if we are in production, if not load the .env file
+if(process.env.NODE_ENV !== 'production') {
+    dotenv.config()
+}
+
+const TOKEN = process.env.API_TOKEN
+
+const SERVER_URL = "http://localhost:8080";//"https://ostfalia-professorenhub.com";
 const wave = fs.readFileSync(new URL("./file_example_WAV_1MG.wav", import.meta.url));
 
 const mockMessages = [
@@ -48,6 +57,7 @@ for (const mockMessage of mockMessages) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            "Authorization": "Bearer ".concat(TOKEN)
         },
         body: JSON.stringify(mockMessage),
     });

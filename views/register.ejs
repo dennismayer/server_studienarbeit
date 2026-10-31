@@ -66,7 +66,8 @@
         font-weight: 600;
         color: var(--muted);
       }
-      .form-group input {
+      .form-group input,
+      .form-group select {
         width: 100%;
         padding: 12px 14px;
         border: 1.5px solid var(--border);
@@ -78,7 +79,8 @@
         outline: none;
         transition: border-color .2s, background .2s;
       }
-      .form-group input:focus {
+      .form-group input:focus,
+      .form-group select:focus {
         border-color: var(--accent);
         background: #fff;
       }
@@ -130,6 +132,15 @@
       <% } %>
       <form action="/register" method="post" id="form">
         <div class="form-group">
+          <label for="academic_title">Titel</label>
+          <select id="academic_title" name="academic_title">
+            <option value="Prof. Dr.">Prof. Dr.</option>
+            <option value="Prof.">Prof.</option>
+            <option value="Dr.">Dr.</option>
+            <option value="">Kein Titel</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label for="firstname">Vorname</label>
           <input type="text" id="firstname" name="firstname" required>
         </div>
@@ -140,6 +151,15 @@
         <div class="form-group">
           <label for="email">Email</label>
           <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label for="default_room_id">Standardraum</label>
+          <select id="default_room_id" name="default_room_id">
+            <option value="">Kein Standardraum</option>
+            <% (typeof rooms !== 'undefined' ? rooms : []).forEach(function (room) { %>
+              <option value="<%= room.room_id %>"><%= room.room_name %></option>
+            <% }) %>
+          </select>
         </div>
         <div class="form-group">
           <label for="password">Passwort</label>

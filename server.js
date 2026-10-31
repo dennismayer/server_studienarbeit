@@ -16,6 +16,7 @@ import connectPgSimple from 'connect-pg-simple'
 import methodOverride from 'method-override'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import crypto from 'node:crypto'
 
 // import AWS s3 client
 import {
@@ -108,8 +109,9 @@ app.use(methodOverride('_method'))
 app.use(express.static(path.join(__dirname, 'public')))
 
 // load index page if authenticated, otherwise redirect to login page
-app.get('/', checkAuthenticated, (req, res) => {
-    res.render('index.ejs', { name:req.user.surname })
+app.get('/', checkAuthenticated, async (req, res) => {
+    const rooms = await getRooms()
+    res.render('index.ejs', { name:req.user.surname, rooms })
 })
 
 // load messages page if authenticated, otherwise redirect to login page
@@ -118,17 +120,22 @@ app.get('/nachrichten', checkAuthenticated, (req, res) => {
 })
 
 // load user info page if authenticated, otherwise redirect to login page
-app.get('/benutzerinformationen', checkAuthenticated, (req, res) => {
+app.get('/benutzerinformationen', checkAuthenticated, async (req, res) => {
+    const rooms = await getRooms()
     res.render('benutzerinformationen.ejs', {
         firstname: req.user.firstname,
         surname: req.user.surname,
-        email: req.user.email
+        email: req.user.email,
+        academic_title: req.user.academic_title,
+        default_room_id: req.user.default_room_id,
+        rooms
     })
 })
 
 // load login page if not authenticated, otherwise redirect to index page
-app.get('/login', checkNotAthenticated, (req, res) => {
-    res.render('login.ejs')
+app.get('/login', checkNotAthenticated, async (req, res) => {
+    const rooms = await getRooms()
+    res.render('login.ejs', {rooms})
 })
 
 // handle login form submission, authenticate user using passport and redirect accordingly
@@ -140,8 +147,10 @@ app.post('/login', checkNotAthenticated, passport.authenticate('local', {
 )
 
 // load registration page if not authenticated, otherwise redirect to index page
-app.get('/register', checkNotAthenticated, (req, res) => {
-    res.render('register.ejs')
+app.get('/register', checkNotAthenticated, async (req, res) => {
+    // get the possible rooms that are currently available
+    const rooms = await getRooms()
+    res.render('register.ejs', { rooms })
 })
 
 // handle registration form submission, hash password and store new user in database, then redirect to login page
@@ -149,12 +158,16 @@ app.post('/register', checkNotAthenticated, async (req, res) => {
     try {
         // hash the password using bcrypt with a salt rounds of 10
         const hashed_password = await bcrypt.hash(req.body.password, 10)
+        
+        // evaluate variables
+        const room_id = parseInt(req.body.default_room_id) || null
+        const academic_title = req.body.academic_title !== '' ? req.body.academic_title : null
 
         // insert new user into the database with the provided surname, firstname, email and hashed password
         await pool.query(
-            `INSERT INTO users (surname, firstname, email, password) 
-             VALUES ($1, $2, $3, $4)`,
-            [req.body.surname, req.body.firstname, req.body.email, hashed_password]
+            `INSERT INTO users (surname, firstname, email, password, default_room_id, academic_title) 
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [req.body.surname, req.body.firstname, req.body.email, hashed_password, room_id, academic_title]
         )
 
         // if successful, redirect to login page
@@ -163,7 +176,8 @@ app.post('/register', checkNotAthenticated, async (req, res) => {
         // if there is an error (e.g. email already exists), log the error and show an appropriate message on the registration page
         console.error(e)
         const message = e.code === '23505' ? 'Diese E-Mail-Adresse ist bereits registriert.' : 'Fehler bei der Registrierung. Bitte versuche es erneut.'
-        return res.status(400).render('register.ejs', { messages: { error: message } })
+        const rooms = await getRooms()
+        return res.status(400).render('register.ejs', {rooms,  messages: { error: message } })
     }
 })
 
@@ -183,13 +197,25 @@ app.get('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
         // load data
         const result = await pool.query(
-            `SELECT date, id, "from", "to", title, room, repeat, "repeatUntil" 
-             FROM time_slots 
-             WHERE date >= $1 AND date <= $2 AND user_id = $3 AND repeat = false
-             UNION
-             SELECT date, id, "from", "to", title, room, repeat, "repeatUntil" 
-             FROM time_slots 
-             WHERE date <= $2 AND "repeatUntil" >= $1 AND user_id = $3 AND repeat = true`,
+            `WITH slot_data 
+             AS (
+                SELECT date, id, "from", "to", title, room_id, repeat, "repeatUntil" 
+                FROM time_slots 
+                WHERE date >= $1 AND date <= $2 AND user_id = $3 AND repeat = false
+                UNION
+                SELECT date, id, "from", "to", title, room_id, repeat, "repeatUntil" 
+                FROM time_slots 
+                WHERE date <= $2 AND "repeatUntil" >= $1 AND user_id = $3 AND repeat = true
+             ),
+             room_data
+             AS (
+                SELECT room_id, room_name AS room
+                FROM rooms
+             )
+             SELECT date, id, "from", "to", title, s.room_id, room, repeat, "repeatUntil" 
+             FROM slot_data s
+             LEFT JOIN room_data r
+             ON s.room_id = r.room_id`,
             [req.query.startDate, req.query.endDate, req.user.user_id]
         )
         
@@ -222,10 +248,10 @@ app.post('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
         // insert data into the database, returning the id of the newly created time slot
         const query = await pool.query(
-            `INSERT INTO time_slots (date, user_id, "from", "to", title, room, repeat, "repeatUntil") 
+            `INSERT INTO time_slots (date, user_id, "from", "to", title, room_id, repeat, "repeatUntil") 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
              RETURNING id`,
-            [req.body.date, req.user.user_id, req.body.from + ':00', req.body.to + ':00', req.body.title, req.body.room, req.body.repeat, req.body.repeatUntil]
+            [req.body.date, req.user.user_id, req.body.from + ':00', req.body.to + ':00', req.body.title, req.body.room_id, req.body.repeat, req.body.repeatUntil]
         )
 
         // send id of the newly created time slot as JSON response with a 200 OK status
@@ -258,53 +284,74 @@ app.delete('/api/slot_data', checkAuthenticated, async (req, res) => {
 })
 
 // API endpoint to fetch the next upcoming time slot for the authenticated user, with the current date and time provided as query parameters
-app.get('/api/slot_data/get_next_timeslot', async (req, res) => {
+app.get('/api/slot_data/get_next_timeslot_info', checkForApiKey, async (req, res) => {
     try {
         // query to get the next upcoming time slot for the authenticated user, ordered by date and time
         const result = await pool.query(
-            `WITH event_occurrences AS (
+            `WITH now_local AS (
+                SELECT (now() AT TIME ZONE 'Europe/Berlin')::date AS today,
+                    (now() AT TIME ZONE 'Europe/Berlin')::time AS now_time
+             ),
+             event_occurrences AS (
                 SELECT
                     e.*,
                     CASE
                         -- One-time event
                         WHEN e.repeat = false THEN
                             CASE
-                                WHEN e.date >= $2
+                                WHEN e.date >= n.today
                                 THEN e.date
                             END
 
                         -- Weekly recurring event
                         WHEN e.repeat = true THEN
                             CASE
-                                WHEN e.date >= $2 THEN
+                                WHEN e.date >= n.today THEN
                                     e.date
                                 ELSE
                                     e.date +
                                     (
                                         CEIL(
-                                            ($2 - e.date)::numeric / 7
+                                            (n.today - e.date)::numeric / 7
                                         )::int * 7
                                     )
                             END
-                    END AS next_occurrence
+                    END AS next_occurrence,
+                    n.today,
+                    n.now_time
                 FROM time_slots e
+                CROSS JOIN now_local n
                 WHERE e.user_id = $1
+            ),
+            next_occurrence_table AS (
+                SELECT next_occurrence, "from", "to", room_id, today, now_time
+                FROM event_occurrences
+                WHERE
+                    next_occurrence IS NOT NULL
+                    AND (
+                        "repeatUntil" IS NULL
+                        OR next_occurrence <= "repeatUntil"
+                    ) 
+                    AND (
+                        next_occurrence != today
+                        OR "to" > now_time
+                    )
+                ORDER BY next_occurrence, "from"
+                LIMIT 1
             )
-            SELECT next_occurrence, "from", "to", room
-            FROM event_occurrences
-            WHERE
-                next_occurrence IS NOT NULL
-                AND (
-                    "repeatUntil" IS NULL
-                    OR next_occurrence <= "repeatUntil"
-                ) 
-                AND (
-                    next_occurrence != $2
-                    OR "to" > $3
-                )
-            ORDER BY next_occurrence, "from"
-            LIMIT 1`,
-            [req.query.id, req.query.currentDate, req.query.currentTime]
+            SELECT 
+                next_occurrence, "from", "to", room_name, x, y, yaw,
+                CASE
+                    WHEN next_occurrence = today AND now_time >= "from" AND now_time <= "to"
+                    THEN true
+                    ELSE false
+                END AS next_occurrence_now
+
+            FROM next_occurrence_table o
+            LEFT JOIN rooms r
+            ON o.room_id = r.room_id
+            `,
+            [req.query.id]
         )
         
         // if there is a result, send it as JSON response with a 200 OK status, otherwise send a 204 No Content status
@@ -319,12 +366,19 @@ app.get('/api/slot_data/get_next_timeslot', async (req, res) => {
         res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching next time slot'}))
     }
 })
+//=========================================================================================
+// API end points for checking if server online
+//=========================================================================================
+app.get('/api/online', checkForApiKey, async (req, res) => {
+    await getRooms()
+    res.sendStatus(200)
+})
 
 //=========================================================================================
 // API end points for audio messages via s3
 //=========================================================================================
 // in -> user_id, sender_name, body, audio_duration_s, need audio?
-app.post('/api/messages', async (req, res) => {
+app.post('/api/messages', checkForApiKey, async (req, res) => {
     try {
         const user_id = req.body.user_id
         const sender_name = req.body.sender_name
@@ -469,7 +523,7 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
             var audio_key = result.rows[0].audio_key
         } else {
             // object was not found in database
-            res.sendStatus(404)
+            return res.sendStatus(404)
         }
     } catch(e) {
         // if there is an error while fetching data, log the error and send a 400 Bad Request status with an appropriate message
@@ -478,7 +532,7 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
         return
     }
 
-    if(audio_key != '') {
+    if(audio_key) {
         try {
             const response = await s3Client.send(new DeleteObjectCommand({
                 Bucket: process.env.BUCKET_NAME,
@@ -489,7 +543,6 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
                 console.log('Object had no bucket entry')
             }
 
-            console.log(response)
         } catch (e) {
             // if there is an error while deleting data, log the error and send a 400 Bad Request status with an appropriate message
             console.error(e)
@@ -504,7 +557,6 @@ app.delete('/api/messages', checkAuthenticated, async (req, res) => {
              WHERE user_id = $1 AND id=$2`,
              [user_id, id]
         )
-        console.log(response)
 
         res.sendStatus(200)
     } catch (e) {
@@ -538,6 +590,18 @@ app.put('/api/update_user_info', checkAuthenticated, async (req, res) => {
         const hashed_password = await bcrypt.hash(req.body.password, 10)
         update_calls.push(`password = $${n}`)
         query_params.push(hashed_password)
+        n += 1
+    }
+
+    if(req.user.default_room_id !== req.body.default_room_id) {
+        update_calls.push(`default_room_id = $${n}`)
+        query_params.push(req.body.default_room_id)
+        n += 1
+    }
+
+    if(req.user.academic_title !== req.body.academic_title) {
+        update_calls.push(`academic_title = $${n}`)
+        query_params.push(req.body.academic_title)
         n += 1
     }
 
@@ -589,6 +653,35 @@ function checkNotAthenticated(req, res, next) {
     }
 
     next()
+}
+
+// middleware function to check if a robot has the api key to the website
+function checkForApiKey(req, res, next) {
+    const header = req.get('Authorization') || ''
+    const [scheme, token] = header.split(' ')
+
+    const given = Buffer.from(token)
+    const expected = Buffer.from(process.env.API_TOKEN)
+    
+    if(scheme !== 'Bearer' || given.length !== expected.length 
+        || !crypto.timingSafeEqual(given, expected)) {
+        return res.sendStatus(401)
+    }
+    next()
+}
+
+// helper function for getting rooms
+async function getRooms() {
+    try {
+        const response = await pool.query(
+            `SELECT room_id, room_name 
+             FROM rooms`
+        )
+        return response.rows
+    } catch (e) {
+        console.error(e)
+        return null
+    }
 }
 
 // start the server on port 8080 and log a message to the console, also set up handlers for graceful shutdown on receiving termination signals

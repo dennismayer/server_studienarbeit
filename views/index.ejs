@@ -633,7 +633,12 @@
         </div>
         <div class="form-group full">
           <label>Raum</label>
-          <input type="text" id="slotRoom" placeholder="z. B. Gebäude A · Raum 214">
+          <select id="slotRoom" data-default="<%= typeof default_room_id !== 'undefined' && default_room_id != null ? default_room_id : '' %>">
+            <option value="">Kein Raum</option>
+            <% (typeof rooms !== 'undefined' ? rooms : []).forEach(function (room) { %>
+              <option value="<%= room.room_id %>"><%= room.room_name %></option>
+            <% }) %>
+          </select>
         </div>
 
         <!-- Repeat toggle -->
@@ -659,7 +664,7 @@
 const state = {
   year:  new Date().getFullYear(),
   month: new Date().getMonth(),  // 0-based
-  slots: {},   // key: "YYYY-MM-DD" → [{id, from, to, title, room, repeat, repeatUntil}]
+  slots: {},   // key: "YYYY-MM-DD" → [{id, from, to, title, room, room_id, repeat, repeatUntil}]
   activeDate: null,
   repeatOn: false,
 };
@@ -759,7 +764,8 @@ async function chacheData() {
         from: slot.from, 
         to: slot.to, 
         title: slot.title, 
-        room: slot.room, 
+        room: slot.room,
+        room_id: slot.room_id,
         repeat: slot.repeat, 
         repeatUntil: slot.repeatUntil
       });
@@ -856,6 +862,7 @@ function openModal(y, m, d){
   document.getElementById('repeatUntil').value =
     `${until.getFullYear()}-${pad(until.getMonth()+1)}-${pad(until.getDate())}`;
 
+  resetSlotRoom();
   renderSlotList(key);
   document.getElementById('overlay').classList.add('open');
 }
@@ -920,6 +927,13 @@ async function deleteSlot(key, id){
   renderCalendar();
 }
 
+// preselect the professor's default room; falls back to "Kein Raum" if it isn't in the list
+function resetSlotRoom(){
+  const select = document.getElementById('slotRoom');
+  select.value = select.dataset.default;
+  if(select.selectedIndex === -1) select.value = '';
+}
+
 function closeModal(){
   document.getElementById('overlay').classList.remove('open');
   state.repeatOn = false;
@@ -927,7 +941,7 @@ function closeModal(){
   document.getElementById('repeatHint').textContent='aus';
   document.getElementById('repeatUntilGroup').style.display='none';
   document.getElementById('slotTitle').value='';
-  document.getElementById('slotRoom').value='';
+  resetSlotRoom();
   document.getElementById('timeFrom').value='10:00';
   document.getElementById('timeTo').value='11:00';
 }
@@ -939,7 +953,10 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
   const from = document.getElementById('timeFrom').value;
   const to   = document.getElementById('timeTo').value;
   const title= document.getElementById('slotTitle').value.trim();
-  const room = document.getElementById('slotRoom').value.trim();
+  const roomSelect = document.getElementById('slotRoom');
+  const room_id = roomSelect.value ? Number(roomSelect.value) : null;
+  // the room name is only kept for the local cache, so the new slot renders without a refetch
+  const room = room_id ? roomSelect.options[roomSelect.selectedIndex].text : '';
   const repeat = state.repeatOn;
   const repeatUntil = repeat ? document.getElementById('repeatUntil').value : null;
 
@@ -958,7 +975,7 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
           from: from,
           to: to,
           title: title,
-          room: room,
+          room_id: room_id,
           repeat: repeat,
           repeatUntil: repeatUntil
         }
@@ -976,7 +993,7 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
     if(!state.slots[key]) state.slots[key]=[];
     state.slots[key].push({
       id: data.id,
-      from, to, title, room, repeat, repeatUntil
+      from, to, title, room, room_id, repeat, repeatUntil
     });
 
   } catch (error) {
@@ -989,7 +1006,7 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
 
   // reset form
   document.getElementById('slotTitle').value='';
-  document.getElementById('slotRoom').value='';
+  resetSlotRoom();
   document.getElementById('timeFrom').value='10:00';
   document.getElementById('timeTo').value='11:00';
   // keep repeat toggle as-is for convenience
