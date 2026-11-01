@@ -366,6 +366,28 @@ app.get('/api/slot_data/get_next_timeslot_info', checkForApiKey, async (req, res
         res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching next time slot'}))
     }
 })
+
+// api endpoint for getting a list of all professors
+app.get('/api/get_professors', checkForApiKey, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT user_id, academic_title, firstname, surname
+             FROM users`
+        )
+        
+        // if there is a result, send it as JSON response with a 200 OK status, otherwise send a 204 No Content status
+        if(result.rows.length > 0) {
+            res.setHeader('Content-Type', 'application/json').status(200).send(JSON.stringify(result.rows))
+        } else {
+            res.sendStatus(204)
+        }
+
+    } catch(e) {
+        console.error(e)
+        res.status(400).setHeader('Content-Type', 'application/json').send(JSON.stringify({message: 'Error while fetching professor names'}))
+    }
+})
+
 //=========================================================================================
 // API end points for checking if server online
 //=========================================================================================
@@ -407,7 +429,7 @@ app.post('/api/messages', checkForApiKey, async (req, res) => {
         if(req.body.send_file) {
             res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: upload_url}))
         } else {
-            res.sendStatus(200)
+            res.sendStatus(204)
         }
 
     } catch (error) {
