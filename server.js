@@ -246,6 +246,10 @@ app.get('/api/slot_data', checkAuthenticated, async (req, res) => {
 // API endpoint to create a new time slot for the authenticated user, with data provided in the request body
 app.post('/api/slot_data', checkAuthenticated, async (req, res) => {
     try {
+        if(!req.body.room_id) {
+            throw Error('No room id given')
+        }
+
         // insert data into the database, returning the id of the newly created time slot
         const query = await pool.query(
             `INSERT INTO time_slots (date, user_id, "from", "to", title, room_id, repeat, "repeatUntil") 
@@ -405,7 +409,7 @@ app.post('/api/messages', checkForApiKey, async (req, res) => {
         const user_id = req.body.user_id
         const sender_name = req.body.sender_name
         const message = req.body.message
-        const audio_duration_s = req.body.audio_duration_s
+        let audio_duration_s = req.body.audio_duration_s
         var audio_key = ""
         var upload_url = ""
 
@@ -417,6 +421,9 @@ app.post('/api/messages', checkForApiKey, async (req, res) => {
                 Key: audio_key,
                 ContentType: 'audio/wav'
             }), { expiresIn: 15 * 60 })
+        } else {
+            audio_key = null
+            audio_duration_s = null
         }
 
         // Anlegen des Eintrages
@@ -442,7 +449,7 @@ app.get('/api/messages', checkAuthenticated, async (req, res) => {
     try {
         // load data
         const result = await pool.query(
-            `SELECT id, sender_name, body, audio_duration_s, is_read, created_at
+            `SELECT id, sender_name, body, audio_duration_s, is_read, created_at, audio_key IS NOT NULL AND audio_key <> '' AS has_audio
              FROM messages
              WHERE user_id = $1
              ORDER BY created_at DESC`,

@@ -506,7 +506,7 @@ function render(){
 }
 
 function buildCard(m){
-  const hasAudio = m.audio_duration_s != null;
+  const hasAudio = m.has_audio;
   const card = document.createElement('article');
   card.className = 'msg-card' + (m.is_read ? '' : ' unread') + (!hasAudio && !m.is_read ? ' clickable' : '');
   card.dataset.id = m.id;

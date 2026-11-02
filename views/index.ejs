@@ -634,7 +634,7 @@
         <div class="form-group full">
           <label>Raum</label>
           <select id="slotRoom" data-default="<%= typeof default_room_id !== 'undefined' && default_room_id != null ? default_room_id : '' %>">
-            <option value="">Kein Raum</option>
+            <option value="" disabled>Raum wählen …</option>
             <% (typeof rooms !== 'undefined' ? rooms : []).forEach(function (room) { %>
               <option value="<%= room.room_id %>"><%= room.room_name %></option>
             <% }) %>
@@ -927,7 +927,7 @@ async function deleteSlot(key, id){
   renderCalendar();
 }
 
-// preselect the professor's default room; falls back to "Kein Raum" if it isn't in the list
+// preselect the professor's default room; falls back to the "Raum wählen …" placeholder if it isn't in the list
 function resetSlotRoom(){
   const select = document.getElementById('slotRoom');
   select.value = select.dataset.default;
@@ -962,6 +962,7 @@ document.getElementById('addSlotBtn').addEventListener('click', async ()=>{
 
   if(!from||!to){ alert('Bitte Anfangs- und Endzeit angeben.'); return; }
   if(from>=to){ alert('Die Endzeit muss nach der Startzeit liegen.'); return; }
+  if(!room_id){ alert('Bitte einen Raum auswählen.'); return; }
 
   try {
     const response = await fetch('/api/slot_data', {
