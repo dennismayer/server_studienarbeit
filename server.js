@@ -111,7 +111,7 @@ app.use(express.static(path.join(__dirname, 'public')))
 // load index page if authenticated, otherwise redirect to login page
 app.get('/', checkAuthenticated, async (req, res) => {
     const rooms = await getRooms()
-    res.render('index.ejs', { name:req.user.surname, rooms })
+    res.render('index.ejs', { name:req.user.surname, rooms, default_room_id: req.user.default_room_id })
 })
 
 // load messages page if authenticated, otherwise redirect to login page
@@ -622,15 +622,17 @@ app.put('/api/update_user_info', checkAuthenticated, async (req, res) => {
         n += 1
     }
 
-    if(req.user.default_room_id !== req.body.default_room_id) {
+    if(req.user.default_room_id != req.body.default_room_id) {
         update_calls.push(`default_room_id = $${n}`)
         query_params.push(req.body.default_room_id)
         n += 1
     }
 
-    if(req.user.academic_title !== req.body.academic_title) {
+    const academic_title = req.body.academic_title !== '' ? req.body.academic_title : null
+
+    if(req.user.academic_title !== academic_title) {
         update_calls.push(`academic_title = $${n}`)
-        query_params.push(req.body.academic_title)
+        query_params.push(academic_title)
         n += 1
     }
 
