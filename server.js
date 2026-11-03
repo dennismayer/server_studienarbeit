@@ -7,7 +7,7 @@ if(process.env.NODE_ENV !== 'production') {
 
 // import necessary modules
 import express from 'express'
-import { Pool } from 'pg'
+import { DatabaseError, Pool } from 'pg'
 import bcrypt from 'bcrypt'
 import passport from 'passport'
 import flash from 'express-flash'
@@ -17,6 +17,11 @@ import methodOverride from 'method-override'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'node:crypto'
+import nodemailer from 'nodemailer'
+import { toWords } from 'to-words'
+
+// constants
+const EMAIL = 'noreply@ostfalia-professorenhub.com'
 
 // import AWS s3 client
 import {
@@ -64,6 +69,16 @@ if(process.env.NODE_ENV !== 'production') {
         requestChecksumCalculation: 'WHEN_REQUIRED'
     });
 }
+
+// start email provider
+const mail_transporter = nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_KEY
+    }
+})
 
 // get passport init function from seperate .js file
 import initializePassport from './passwort-config.js'
@@ -432,6 +447,73 @@ app.post('/api/messages', checkForApiKey, async (req, res) => {
             VALUES ($1, $2, $3, $4, $5)`,
             [user_id, sender_name, message, audio_key, audio_duration_s]
         )
+
+        try {
+            const message_count_result = await pool.query(
+                `SELECT COUNT(*)
+                FROM messages
+                WHERE user_id = $1 AND is_read = false`,
+                [user_id]
+            )
+
+            if(message_count_result.rowCount == 0) {
+                throw Error("No count for unread messages!")
+            }
+
+            const message_count = parseInt(message_count_result.rows[0].count, 10)
+            let subject = ''
+
+            switch(message_count) {
+                case 0:
+                    throw Error("User has no new messages")
+                case 1: 
+                    subject = "Sie haben eine neue Nachricht auf ostfalia-professorenhub.com" 
+                    break
+                default:
+                    subject = `Sie haben ${toWords(message_count, { localeCode: 'de-DE'}).toLowerCase()} neue Nachrichten auf ostfalia-professorenhub.com`
+            }
+
+            const email_result = await pool.query(
+                `SELECT email
+                FROM users
+                WHERE user_id = $1`,
+                [user_id]
+            )
+
+            if(email_result.rowCount == 0) {
+                throw Error("No User for id!")
+            }
+
+            const email = email_result.rows[0].email
+            
+            const audio_hint = audio_key ? '\n\nDieser Nachricht ist außerdem eine Sprachnachricht beigefügt.' : ''
+
+            const text = `Guten Tag,
+
+            Sie haben neue Post auf ostfalia-professorenhub.com.
+
+            Die neueste Nachricht stammt von ${sender_name}:
+
+            "${message}"${audio_hint}
+
+            Alle Nachrichten können Sie hier lesen und anhören:
+            https://ostfalia-professorenhub.com
+
+            Dies ist eine automatisch versendete E-Mail. Bitte antworten Sie nicht darauf.`
+
+            const mailOptions = {
+                from: `"Ostfalia Professorenhub" <${EMAIL}>`,
+                to: email,
+                subject: subject,
+                text: text
+            }
+
+            await mail_transporter.sendMail(mailOptions)
+
+        } catch(e) {
+            console.error(`Error while sending mail: ${e}`)
+        }
+        
 
         if(req.body.send_file) {
             res.status(200).setHeader('Content-Type', 'application/json').send(JSON.stringify({url: upload_url}))
